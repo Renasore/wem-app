@@ -671,11 +671,13 @@ export default function WEMApp() {
                             {aulas.length > 0 && (
                               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:2 }}>
                                 {aulas.filter(e => {
-                                  // Ocultar registros APÓS a data de conclusão da tarefa
-                                  const cDate = sel.taskCompletions[t.number-1];
-                                  if (!cDate) return true;
+                                  // Encontrar a data em que a tarefa foi marcada como concluída no classLog
+                                  const primeiraConc = aulas.find(a =>
+                                    a.tasks?.find(tk => tk.taskIndex === t.number-1 && tk.stage === "concluida")
+                                  );
+                                  if (!primeiraConc) return true;
                                   try {
-                                    const [cd,cm,cy] = cDate.split("/");
+                                    const [cd,cm,cy] = primeiraConc.date.split("/");
                                     const [ed,em,ey] = e.date.split("/");
                                     const conclusao = new Date(+cy,+cm-1,+cd);
                                     const entrada   = new Date(+ey,+em-1,+ed);
@@ -1328,7 +1330,7 @@ export default function WEMApp() {
                           <div style={{fontSize:14,color:st.color,fontWeight:stage!=="none"?"bold":"normal"}}>{t.name}</div>
                           <div style={{fontSize:11,color:C.dim}}>#{t.number} · {t.module.split("·")[1]?.trim()||""}</div>
                         </div>
-                        {idx===sel.taskIndex && <span style={{fontSize:10,color:C.amber,border:`1px solid ${C.gold}`,borderRadius:3,padding:"1px 4px",flexShrink:0}}>atual</span>}
+  
                       </button>
                     );
                   })}
