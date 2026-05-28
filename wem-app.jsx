@@ -1311,35 +1311,60 @@ export default function WEMApp() {
             );
           })()}
 
-          {taskPicker && (
-            <div style={{background:C.card,border:`1px solid ${C.amber}`,borderRadius:12,padding:14,marginBottom:16}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <span style={{fontSize:13,fontWeight:"bold",color:taskPicker.type==="presenca"?"#38a048":C.amberL}}>
-                  {taskPicker.type==="presenca"?"✅ Tarefas desta presença":"🔄 Tarefas desta reposição"}
-                </span>
-                <span style={{fontSize:11,color:C.muted}}>{taskPicker.selected.length} selecionada{taskPicker.selected.length!==1?"s":""}</span>
+          {taskPicker && (() => {
+            const PICKER_STAGES = {
+              none:     { icon:"⬜", color:C.muted,  bg:"transparent", bd:"transparent" },
+              iniciada: { icon:"🔶", color:C.amberL, bg:"#2a1e06",     bd:C.gold },
+              concluida:{ icon:"✅", color:"#38a048", bg:"#0e2814",     bd:"#1e5020" },
+            };
+            function togglePickerStage(idx) {
+              setTaskPicker(p => {
+                const curStage = p.stages?.[idx] || "none";
+                const nextStage = curStage==="none"?"iniciada":curStage==="iniciada"?"concluida":"none";
+                const newStages = {...(p.stages||{}), [idx]:nextStage};
+                // selected = todos que não são "none"
+                const newSelected = Object.entries(newStages).filter(([,v])=>v!=="none").map(([k])=>+k);
+                return {...p, stages:newStages, selected:newSelected};
+              });
+            }
+            return (
+              <div style={{background:C.card,border:`1px solid ${C.amber}`,borderRadius:12,padding:14,marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{fontSize:13,fontWeight:"bold",color:taskPicker.type==="presenca"?"#38a048":C.amberL}}>
+                    {taskPicker.type==="presenca"?"✅ Tarefas desta presença":"🔄 Tarefas desta reposição"}
+                  </span>
+                  <span style={{fontSize:11,color:C.muted}}>{taskPicker.selected.length} selecionada{taskPicker.selected.length!==1?"s":""}</span>
+                </div>
+                {/* Legenda */}
+                <div style={{display:"flex",gap:12,marginBottom:8,fontSize:11}}>
+                  {Object.entries(PICKER_STAGES).map(([k,v])=>(
+                    <div key={k} style={{display:"flex",alignItems:"center",gap:3,color:v.color||C.muted}}><span>{v.icon}</span>{k==="none"?"Não sel.":k==="iniciada"?"Iniciada":"Concluída"}</div>
+                  ))}
+                </div>
+                <div style={{maxHeight:260,overflowY:"auto",marginBottom:10}}>
+                  {ALL_TASKS.map((t,idx) => {
+                    const stage = taskPicker.stages?.[idx] || "none";
+                    const st    = PICKER_STAGES[stage];
+                    return (
+                      <button key={idx} onClick={()=>togglePickerStage(idx)}
+                        style={{display:"flex",alignItems:"center",width:"100%",background:st.bg,border:`1px solid ${st.bd}`,borderRadius:8,padding:"9px 10px",marginBottom:4,cursor:"pointer",gap:8,boxSizing:"border-box"}}>
+                        <span style={{fontSize:18,flexShrink:0}}>{st.icon}</span>
+                        <div style={{flex:1,textAlign:"left"}}>
+                          <div style={{fontSize:14,color:st.color,fontWeight:stage!=="none"?"bold":"normal"}}>{t.name}</div>
+                          <div style={{fontSize:11,color:C.dim}}>#{t.number} · {t.module.split("·")[1]?.trim()||""}</div>
+                        </div>
+                        {idx===sel.taskIndex && <span style={{fontSize:10,color:C.amber,border:`1px solid ${C.gold}`,borderRadius:3,padding:"1px 4px",flexShrink:0}}>atual</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setTaskPicker(null)} style={{...S.btn(C.card2,C.muted),flex:"none",padding:"11px 16px",border:`1px solid ${C.border}`}}>Cancelar</button>
+                  <button onClick={confirmAula} style={{...S.btn(taskPicker.type==="presenca"?C.green:"#3a2a08",taskPicker.type==="presenca"?"#fff":C.amberL),border:`1px solid ${taskPicker.type==="presenca"?"#2d6a30":C.gold}`}}>Confirmar</button>
+                </div>
               </div>
-              <div style={{maxHeight:220,overflowY:"auto",marginBottom:10}}>
-                {ALL_TASKS.map((t,idx) => {
-                  const s2   = taskPicker.selected.includes(idx);
-                  const past = idx < sel.taskIndex && !s2;
-                  return (
-                    <button key={idx} onClick={()=>setTaskPicker(p=>({...p,selected:s2?p.selected.filter(i=>i!==idx):[...p.selected,idx]}))}
-                      style={{display:"flex",alignItems:"center",width:"100%",background:s2?"#2a1e06":"transparent",border:`1px solid ${s2?C.amber:"transparent"}`,borderRadius:8,padding:"8px 10px",marginBottom:3,cursor:"pointer",gap:8,boxSizing:"border-box",opacity:past?0.4:1}}>
-                      <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${s2?C.amber:C.border}`,background:s2?C.amber:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{s2&&<span style={{color:"#17130e",fontSize:12,fontWeight:"bold"}}>✓</span>}</div>
-                      <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{t.number}</span>
-                      <span style={{fontSize:14,color:s2?C.amberL:past?C.dim:C.text,flex:1,textAlign:"left"}}>{t.name}</span>
-                      {idx===sel.taskIndex && <span style={{fontSize:10,color:C.amber,border:`1px solid ${C.gold}`,borderRadius:3,padding:"1px 4px"}}>atual</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>setTaskPicker(null)} style={{...S.btn(C.card2,C.muted),flex:"none",padding:"11px 16px",border:`1px solid ${C.border}`}}>Cancelar</button>
-                <button onClick={confirmAula} style={{...S.btn(taskPicker.type==="presenca"?C.green:"#3a2a08",taskPicker.type==="presenca"?"#fff":C.amberL),border:`1px solid ${taskPicker.type==="presenca"?"#2d6a30":C.gold}`}}>Confirmar</button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {migrateConf && (
             <div style={{background:"#1a1a2e",border:"1px solid #3a3a6a",borderRadius:10,padding:14,marginBottom:14,textAlign:"center"}}>
