@@ -256,7 +256,7 @@ export default function WEMApp() {
     const { type, selected, stages } = taskPicker;
     const sorted = [...selected].sort((a,b) => a-b);
     upd(sel.id, s => {
-      const entry = { id:uid(), date:todBR(), type, tasks:sorted.map(i => ({ taskIndex:i, taskName:ALL_TASKS[i]?.name||"—" })) };
+      const entry = { id:uid(), date:todBR(), type, tasks:sorted.map(i => ({ taskIndex:i, taskName:ALL_TASKS[i]?.name||"—", stage:stages?.[i]||"none" })) };
       // Salvar taskCompletions (concluídas) e taskStages (todos os estágios)
       const comps  = { ...s.taskCompletions };
       const newStages = { ...(s.taskStages||{}), ...(stages||{}) };
@@ -670,7 +670,16 @@ export default function WEMApp() {
                             )}
                             {aulas.length > 0 && (
                               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:2 }}>
-                                {aulas.map(e => { const ts = TS[e.type]||TS.falta; return <span key={e.id} style={{ fontSize:10, background:ts.bg, color:ts.color, border:`1px solid ${ts.bd}`, borderRadius:4, padding:"2px 6px" }}>{ts.icon} {e.date}</span>; })}
+                                {aulas.map(e => {
+                                  const taskEntry = e.tasks?.find(tk => tk.taskIndex === t.number-1);
+                                  const stg = taskEntry?.stage || "none";
+                                  const SI = {
+                                    none:      { icon:"⬜", color:C.muted,  bg:C.card2,   bd:C.border },
+                                    iniciada:  { icon:"🔶", color:C.amberL, bg:"#2a1e06", bd:C.gold },
+                                    concluida: { icon:"✅", color:"#38a048",bg:"#0e2814", bd:"#1e5020" },
+                                  }[stg];
+                                  return <span key={e.id} style={{ fontSize:10, background:SI.bg, color:SI.color, border:`1px solid ${SI.bd}`, borderRadius:4, padding:"2px 6px" }}>{SI.icon} {e.date}</span>;
+                                })}
                               </div>
                             )}
                           </div>
