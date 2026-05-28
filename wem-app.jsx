@@ -670,9 +670,19 @@ export default function WEMApp() {
                             )}
                             {aulas.length > 0 && (
                               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:2 }}>
-                                {aulas.map(e => {
+                                {aulas.filter(e => {
+                                  // Ocultar registros APÓS a data de conclusão da tarefa
+                                  const cDate = sel.taskCompletions[t.number-1];
+                                  if (!cDate) return true;
+                                  try {
+                                    const [cd,cm,cy] = cDate.split("/");
+                                    const [ed,em,ey] = e.date.split("/");
+                                    const conclusao = new Date(+cy,+cm-1,+cd);
+                                    const entrada   = new Date(+ey,+em-1,+ed);
+                                    return entrada <= conclusao;
+                                  } catch { return true; }
+                                }).map(e => {
                                   const taskEntry = e.tasks?.find(tk => tk.taskIndex === t.number-1);
-                                  // Para registros antigos sem stage, usa o estágio atual da tarefa
                                   const stg = taskEntry?.stage && taskEntry.stage !== "none"
                                     ? taskEntry.stage
                                     : (sel.taskStages?.[t.number-1] || "none");
