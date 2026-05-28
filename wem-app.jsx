@@ -167,6 +167,9 @@ export default function WEMApp() {
   const [waSelected,    setWaSelected]    = useState([]);
   const [waMsg,         setWaMsg]         = useState("");
   const [dbStatus,      setDbStatus]      = useState("loading");
+  const [waBulkTargets, setWaBulkTargets] = useState([]);
+  const [waBulkIdx,     setWaBulkIdx]     = useState(-1);
+  const [waBulkMsg,     setWaBulkMsg]     = useState("");
   const saveTimer = useRef(null);
 
   const sel  = students.find(s => s.id === selId);
@@ -220,26 +223,24 @@ export default function WEMApp() {
   function confirmAula() {
     if (!taskPicker || taskPicker.selected.length === 0) { showMsg("Selecione ao menos uma tarefa.", "warn"); return; }
     const { type, selected } = taskPicker;
-    const sorted   = [...selected].sort((a,b) => a-b);
-    const maxTask  = sorted[sorted.length-1];
+    const sorted = [...selected].sort((a,b) => a-b);
     upd(sel.id, s => {
       const entry = { id:uid(), date:todBR(), type, tasks:sorted.map(i => ({ taskIndex:i, taskName:ALL_TASKS[i]?.name||"—" })) };
       const comps = { ...s.taskCompletions };
       sorted.forEach(i => { if (!comps[i]) comps[i] = todBR(); });
-      const newIdx  = Math.max(s.taskIndex, maxTask+1);
-      const nowDone = newIdx >= 20 && s.taskIndex < 20;
+      // NÃO avança taskIndex automaticamente — usuário controla manualmente
       if (type === "reposicao") {
         let done = false;
         const log = s.classLog.map(e => { if (!done && e.type==="falta" && !e.reposta) { done=true; return {...e,reposta:true}; } return e; });
-        return { ...s, pendingReposicoes:s.pendingReposicoes-1, totalFaltas:s.totalFaltas-1, totalClasses:s.totalClasses+1, taskIndex:newIdx, taskCompletions:comps, conclusionDate:nowDone?todBR():s.conclusionDate, classLog:[entry,...log] };
+        return { ...s, pendingReposicoes:s.pendingReposicoes-1, totalFaltas:s.totalFaltas-1, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...log] };
       }
       if (s.mode !== "pacote") {
         const av = { id:uid(), date:todBR(), value:PRECO.avulsa, paid:false, paidDate:null, entryId:entry.id };
-        return { ...s, totalClasses:s.totalClasses+1, taskIndex:newIdx, taskCompletions:comps, conclusionDate:nowDone?todBR():s.conclusionDate, classLog:[entry,...s.classLog], avulsaLog:[...(s.avulsaLog||[]),av] };
+        return { ...s, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...s.classLog], avulsaLog:[...(s.avulsaLog||[]),av] };
       }
-      if (s.needsRenewal) return { ...s, fichaUsed:1, needsRenewal:false, totalClasses:s.totalClasses+1, taskIndex:newIdx, taskCompletions:comps, conclusionDate:nowDone?todBR():s.conclusionDate, classLog:[entry,...s.classLog] };
+      if (s.needsRenewal) return { ...s, fichaUsed:1, needsRenewal:false, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...s.classLog] };
       const nf = s.fichaUsed + 1;
-      return { ...s, fichaUsed:nf, needsRenewal:nf>=4, totalClasses:s.totalClasses+1, taskIndex:newIdx, taskCompletions:comps, conclusionDate:nowDone?todBR():s.conclusionDate, classLog:[entry,...s.classLog] };
+      return { ...s, fichaUsed:nf, needsRenewal:nf>=4, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...s.classLog] };
     });
     showMsg(`${type === "presenca" ? "Presença" : "Reposição"} registrada ✓`);
     setTaskPicker(null);
@@ -318,6 +319,34 @@ export default function WEMApp() {
   const doExtraPaid = (n, paid, iso) => { upd(selId, s => ({...s, extraPayments:{...s.extraPayments,[n]:{paid,date:paid?fmtD(iso):null}}})); setEditExtra(null); showMsg(paid?"Pago ✓":"Pendente", paid?"ok":"warn"); };
   const doRenPaid   = (rid, paid)    => { upd(selId, s => ({...s, renewalLog:s.renewalLog.map(r => r.id===rid?{...r,paid,paidDate:paid?todBR():null}:r)})); showMsg(paid?"Pago ✓":"Pendente"); };
   const doRenDate   = (rid, iso)     => { upd(selId, s => ({...s, renewalLog:s.renewalLog.map(r => r.id===rid?{...r,paidDate:fmtD(iso)}:r)})); setEditRenDate(null); showMsg("Data atualizada ✓"); };
+  const doDelEntry  = (eid) => {
+    upd(selId, s => {
+      const entry = s.classLog.find(e => e.id === eid);
+      if (!entry) return s;
+      let updates = { classLog: s.classLog.filter(e => e.id !== eid) };
+      if (entry.type === "presenca" || entry.type === "reposicao") {
+        updates.totalClasses = Math.max(0, s.totalClasses - 1);
+      }
+      if (entry.type === "falta") {
+        updates.totalFaltas = Math.max(0, s.totalFaltas - 1);
+        if (!entry.reposta) updates.pendingReposicoes = Math.max(0, s.pendingReposicoes - 1);
+      }
+      if (entry.type === "reposicao") {
+        // ao deletar reposição, volta a falta como não reposta
+        updates.pendingReposicoes = s.pendingReposicoes + 1;
+        updates.totalFaltas = s.totalFaltas + 1;
+        updates.classLog = updates.classLog.map((e, idx) => {
+          // marcar a falta mais recente não reposta
+          return e;
+        });
+      }
+      if (entry.type === "presenca" && s.mode !== "pacote") {
+        updates.avulsaLog = (s.avulsaLog||[]).filter(a => a.entryId !== eid);
+      }
+      return { ...s, ...updates };
+    });
+    showMsg("Aula removida ✓", "warn");
+  };
   const doAvPaid    = (aid, paid, iso) => { upd(selId, s => ({...s, avulsaLog:(s.avulsaLog||[]).map(a => a.id===aid?{...a,paid,paidDate:paid?fmtD(iso):null}:a)})); setEditAvDate(null); showMsg(paid?"Pago ✓":"Pendente"); };
 
   function doExport() {
@@ -352,9 +381,13 @@ export default function WEMApp() {
       ? students.filter(s => waSelected.includes(s.id) && s.phone)
       : students.filter(s => s.status==="active" && s.phone);
     if (targets.length === 0) { showMsg("Nenhum aluno com celular", "warn"); return; }
-    targets.forEach((s, i) => setTimeout(() => window.open(waLink(s.phone, waMsg), "_blank"), i*600));
-    setWaScreen(false); setWaMsg(""); setWaSelected([]);
-    showMsg(`WhatsApp aberto para ${targets.length} aluno(s)`);
+    // Abre um por vez — usuário clica para o próximo
+    setWaBulkTargets(targets);
+    setWaBulkIdx(0);
+    const msgToSend = waMsg;
+    setWaBulkMsg(msgToSend);
+    setWaScreen(false);
+    setWaMsg(""); setWaSelected([]);
   }
 
   const getAlerts = () => {
@@ -691,6 +724,8 @@ export default function WEMApp() {
                               <button onClick={() => setEditDate(isEd ? null : {entryId:entry.id, value:entry.date?toIso(entry.date):todISO()})} style={{ background:isEd?C.amber:"none", border:`1px solid ${isEd?C.amber:C.border}`, color:isEd?"#17130e":C.muted, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer" }}>
                                 {isEd ? "cancelar" : "✏️ "+entry.date}
                               </button>
+                              <button onClick={()=>{ if(window.confirm("Remover este registro?")) doDelEntry(entry.id); }}
+                                style={{background:"#3a0808",border:"1px solid #7a1818",color:"#e05050",borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer"}}>🗑️</button>
                             </div>
                             {entry.type !== "falta" && entry.tasks && <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:4 }}>{entry.tasks.map(tk => <span key={tk.taskIndex} style={{ fontSize:11, background:C.card2, color:C.muted, border:`1px solid ${C.border}`, borderRadius:4, padding:"2px 7px" }}>#{tk.taskIndex+1} · {tk.taskName}</span>)}</div>}
                           </div>
@@ -1049,7 +1084,7 @@ export default function WEMApp() {
               <button onClick={doRenovar} style={{background:C.warn,border:"none",color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:"bold"}}>Renovar</button>
             </div>
           )}
-          {sel.status==="active" && !sel.needsRenewal && (
+          {sel.status==="active" && (
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
               <button onClick={()=>setLockPicker(true)} style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>🔒 Trancar curso</button>
             </div>
@@ -1189,6 +1224,48 @@ export default function WEMApp() {
               </div>
             : <button onClick={()=>setConfirmDel(true)} style={{background:"none",border:"none",color:C.dim,fontSize:13,cursor:"pointer",width:"100%",padding:"8px 0",textDecoration:"underline"}}>Remover aluno</button>
           }
+        </div>
+        <Toast toast={toast} />
+      </div>
+    );
+  }
+
+  // Modal de envio WhatsApp em massa (um por vez)
+  if (waBulkIdx >= 0 && waBulkIdx < waBulkTargets.length) {
+    const current = waBulkTargets[waBulkIdx];
+    const isLast  = waBulkIdx === waBulkTargets.length - 1;
+    return (
+      <div style={S.page}>
+        <div style={{background:C.card,borderBottom:`1px solid ${C.border}`,padding:"14px 16px",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:16,fontWeight:"bold",color:"#38c048",flex:1}}>💬 Enviando mensagens</span>
+          <span style={{fontSize:12,color:C.muted}}>{waBulkIdx+1} / {waBulkTargets.length}</span>
+        </div>
+        <div style={{padding:24}}>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:20,marginBottom:20,textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:10}}>💬</div>
+            <div style={{fontSize:20,fontWeight:"bold",color:C.text,marginBottom:4}}>{current.name}</div>
+            <div style={{fontSize:14,color:C.muted,marginBottom:16}}>{current.phone}</div>
+            <a href={waLink(current.phone, waBulkMsg)} target="_blank" rel="noreferrer"
+              onClick={()=>{ setTimeout(()=>{ if(isLast){setWaBulkIdx(-1);setWaBulkTargets([]);showMsg("Envio concluído! ✓");}else{setWaBulkIdx(i=>i+1);} },1500); }}
+              style={{display:"block",background:"#1a6a2a",color:"#fff",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:"bold",textDecoration:"none",marginBottom:10}}>
+              Abrir WhatsApp → {current.name}
+            </a>
+            {!isLast && (
+              <button onClick={()=>setWaBulkIdx(i=>i+1)} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,color:C.muted,borderRadius:12,padding:"12px 0",fontSize:14,cursor:"pointer"}}>
+                Pular este aluno
+              </button>
+            )}
+            {isLast && (
+              <button onClick={()=>{setWaBulkIdx(-1);setWaBulkTargets([]);showMsg("Envio concluído! ✓");}} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,color:C.muted,borderRadius:12,padding:"12px 0",fontSize:14,cursor:"pointer"}}>
+                Encerrar envio
+              </button>
+            )}
+          </div>
+          <div style={{display:"flex",justifyContent:"center",gap:6,flexWrap:"wrap"}}>
+            {waBulkTargets.map((t,i)=>(
+              <div key={t.id} style={{width:10,height:10,borderRadius:5,background:i<waBulkIdx?"#38a048":i===waBulkIdx?"#38c048":C.border}}/>
+            ))}
+          </div>
         </div>
         <Toast toast={toast} />
       </div>
