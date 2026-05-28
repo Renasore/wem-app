@@ -620,20 +620,25 @@ export default function WEMApp() {
                 <div key={mod.name} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, marginBottom:10, overflow:"hidden" }}>
                   <div style={{ background:"#2a1e06", borderBottom:`1px solid ${C.border}`, padding:"9px 14px", fontSize:11, color:C.amber, fontWeight:"bold" }}>{mod.name.toUpperCase()}</div>
                   {mTasks.map(t => {
-                    const done = t.number-1 < sel.taskIndex, cur = t.number-1 === sel.taskIndex;
+                    const stage  = sel.taskStages?.[t.number-1] || "none";
+                    const stageInfo = {
+                      none:      { icon:"⬜", color:C.muted,  bg:"transparent", bd:C.border },
+                      iniciada:  { icon:"🔶", color:C.amberL, bg:"#2a1e06",     bd:C.gold },
+                      concluida: { icon:"✅", color:"#38a048", bg:"#0e2814",    bd:"#1e5020" },
+                    }[stage];
                     const cDate = sel.taskCompletions[t.number-1];
                     const ex = EXTRA_COSTS[t.name], ep = sel.extraPayments?.[t.name];
                     const isEdTask = editTaskDate?.taskIdx === t.number-1;
                     const isEdEx   = editExtra?.taskName === t.name;
                     const aulas = sel.classLog.filter(e => e.type!=="falta" && e.tasks?.some(tk => tk.taskIndex===t.number-1));
                     return (
-                      <div key={t.number} style={{ padding:"11px 14px", borderBottom:`1px solid ${C.border}`, background:cur?"#241a08":"transparent" }}>
+                      <div key={t.number} style={{ padding:"11px 14px", borderBottom:`1px solid ${C.border}`, background:stageInfo.bg }}>
                         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-                          <div style={{ width:24, height:24, borderRadius:12, flexShrink:0, marginTop:1, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, background:done?C.green:cur?C.amber:C.card2, border:`1px solid ${done?"#2d6a30":cur?C.gold:C.border}` }}>{done?"✓":cur?"→":""}</div>
+                          <span style={{ fontSize:20, flexShrink:0, marginTop:1 }}>{stageInfo.icon}</span>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:6, marginBottom:4 }}>
-                              <span style={{ fontSize:14, color:done?C.text:cur?C.amberL:C.muted, fontWeight:done||cur?"bold":"normal" }}>#{t.number} · {t.name}</span>
-                              {cur && <span style={{ fontSize:10, color:C.amber, border:`1px solid ${C.gold}`, borderRadius:4, padding:"1px 5px" }}>atual</span>}
+                              <span style={{ fontSize:14, color:stageInfo.color, fontWeight:stage!=="none"?"bold":"normal" }}>#{t.number} · {t.name}</span>
+
                               {ex && (
                                 <button onClick={() => ep?.paid ? doExtraPaid(t.name,false,null) : setEditExtra({taskName:t.name,dateValue:todISO()})}
                                   style={{ fontSize:10, padding:"2px 8px", borderRadius:12, border:`1px solid ${ep?.paid?"#2a5c2a":C.warn}`, background:ep?.paid?"#0e2814":"#2d1806", color:ep?.paid?"#5ab030":C.warn, cursor:"pointer", fontWeight:"bold" }}>
@@ -1205,24 +1210,22 @@ export default function WEMApp() {
             </div>
           )}
 
-          <div style={S.card}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{fontSize:11,color:C.muted,letterSpacing:1.5}}>PROGRESSO</span>
-              <span style={{fontSize:12,color:C.amberL}}>{sel.taskIndex}/20</span>
-            </div>
-            <div style={{height:8,borderRadius:4,background:C.card2,marginBottom:14,overflow:"hidden"}}>
-              <div style={{height:"100%",borderRadius:4,background:`linear-gradient(to right,${C.amber},${C.amberL})`,width:`${(sel.taskIndex/20)*100}%`}}/>
-            </div>
-            {sel.taskIndex>=20
-              ? <div style={{textAlign:"center",color:C.amberL,fontWeight:"bold",fontSize:16}}>🎓 CURSO CONCLUÍDO!</div>
-              : task && (
-                <div>
-                  <div style={{fontSize:11,color:C.muted}}>{task.module}</div>
-                  <div style={{fontSize:17,fontWeight:"bold",color:C.text,marginTop:3}}>#{task.number} · {task.name}</div>
+          {(() => {
+            const concluidasCount = Object.values(sel.taskStages||{}).filter(v=>v==="concluida").length;
+            const pct = Math.round((concluidasCount/20)*100);
+            return (
+              <div style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:11,color:C.muted,letterSpacing:1.5}}>PROGRESSO DAS TAREFAS</span>
+                  <span style={{fontSize:12,color:C.amberL}}>{concluidasCount}/20</span>
                 </div>
-              )
-            }
-          </div>
+                <div style={{height:8,borderRadius:4,background:C.card2,marginBottom:6,overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:4,background:`linear-gradient(to right,${C.amber},${C.amberL})`,width:`${pct}%`,transition:"width 0.3s"}}/>
+                </div>
+                {concluidasCount>=20 && <div style={{textAlign:"center",color:C.amberL,fontWeight:"bold",fontSize:16,marginTop:8}}>🎓 CURSO CONCLUÍDO!</div>}
+              </div>
+            );
+          })()}
 
           <div style={{fontSize:11,color:C.muted,letterSpacing:1.5,marginBottom:8}}>REGISTRAR</div>
           {(() => {
