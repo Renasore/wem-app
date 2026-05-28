@@ -163,6 +163,9 @@ export default function WEMApp() {
   const [dashFilter,    setDashFilter]    = useState("all");
   const [dashTab,       setDashTab]       = useState("financeiro");
   const [showNotif,     setShowNotif]     = useState(false);
+  const [search,        setSearch]        = useState("");
+  const [listFilter,    setListFilter]    = useState("all");
+  const [editName,      setEditName]      = useState(null); // {id, value}
   const [waScreen,      setWaScreen]      = useState(false);
   const [waSelected,    setWaSelected]    = useState([]);
   const [waMsg,         setWaMsg]         = useState("");
@@ -314,6 +317,7 @@ export default function WEMApp() {
   }
 
   const doDel       = () => { setStudents(p => p.filter(s => s.id!==selId)); setConfirmDel(false); setScreen("list"); };
+  const doEditName  = () => { if(!editName||!editName.value.trim()) return; upd(editName.id, s=>({...s,name:editName.value.trim()})); setEditName(null); showMsg("Nome atualizado ✓"); };
   const doUpdDate   = (eid, iso) => { upd(selId, s => ({...s, classLog:s.classLog.map(e => e.id===eid ? {...e,date:fmtD(iso)} : e)})); setEditDate(null); showMsg("Data atualizada ✓"); };
   const doUpdTDate  = (i, iso)   => { upd(selId, s => ({...s, taskCompletions:{...s.taskCompletions,[i]:fmtD(iso)}})); setEditTaskDate(null); showMsg("Data atualizada ✓"); };
   const doExtraPaid = (n, paid, iso) => { upd(selId, s => ({...s, extraPayments:{...s.extraPayments,[n]:{paid,date:paid?fmtD(iso):null}}})); setEditExtra(null); showMsg(paid?"Pago ✓":"Pendente", paid?"ok":"warn"); };
@@ -1276,10 +1280,27 @@ export default function WEMApp() {
   // SCREEN: LIST
   // ════════════════════════════════════════════════════════════
   const alerts = getAlerts();
+  const GRUPOS = [
+    { id:"all",      label:"Todos" },
+    { id:"tf1",      label:"TF1" },
+    { id:"tf2",      label:"TF2" },
+    { id:"sab",      label:"Sábado" },
+    { id:"avulsa",   label:"Avulso" },
+    { id:"trancado", label:"Trancados" },
+  ];
+  const filteredStudents = students.filter(st => {
+    const matchSearch = !search || st.name.toLowerCase().includes(search.toLowerCase());
+    const matchFilter = listFilter==="all" ? true
+      : listFilter==="trancado" ? st.status==="trancado"
+      : listFilter==="avulsa"   ? st.mode==="avulsa" && st.status!=="trancado"
+      : st.turma===listFilter && st.status!=="trancado";
+    return matchSearch && matchFilter;
+  });
+
   return (
     <div style={S.page}>
       <div style={{background:C.card,borderBottom:`1px solid ${C.border}`,padding:"16px 16px 14px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
           <div>
             <div style={{fontSize:10,color:C.amber,letterSpacing:2.5,marginBottom:3}}>WAGNON MÓVEIS</div>
             <div style={{fontSize:22,fontWeight:"bold",color:C.text}}>Curso de Marcenaria</div>
@@ -1291,6 +1312,23 @@ export default function WEMApp() {
               <span style={{position:"absolute",top:0,right:0,background:"#e05050",color:"#fff",borderRadius:10,fontSize:10,fontWeight:"bold",padding:"1px 5px"}}>{alerts.length}</span>
             </button>
           )}
+        </div>
+        {/* Busca */}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar aluno..." style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",color:C.text,fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:10}} />
+        {/* Filtros de turma */}
+        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
+          {GRUPOS.map(g => {
+            const cnt = g.id==="all" ? students.length
+              : g.id==="trancado" ? students.filter(s=>s.status==="trancado").length
+              : g.id==="avulsa"   ? students.filter(s=>s.mode==="avulsa"&&s.status!=="trancado").length
+              : students.filter(s=>s.turma===g.id&&s.status!=="trancado").length;
+            return (
+              <button key={g.id} onClick={()=>setListFilter(g.id)}
+                style={{flexShrink:0,padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:"bold",cursor:"pointer",border:`1px solid ${listFilter===g.id?C.amber:C.border}`,background:listFilter===g.id?"#2a1e06":C.card2,color:listFilter===g.id?C.amberL:C.muted,whiteSpace:"nowrap"}}>
+                {g.label} {cnt>0?`(${cnt})`:""}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1307,25 +1345,46 @@ export default function WEMApp() {
       )}
 
       <div style={{padding:16,paddingBottom:150}}>
-        {students.length===0
-          ? <div style={{textAlign:"center",padding:"64px 20px",color:C.muted}}><div style={{fontSize:48,marginBottom:14}}>🪵</div><div style={{fontSize:17,marginBottom:6,color:C.text}}>Nenhum aluno cadastrado</div><div style={{fontSize:13}}>Toque em + para adicionar</div></div>
-          : students.map(st => {
+        {filteredStudents.length===0
+          ? <div style={{textAlign:"center",padding:"40px 20px",color:C.muted}}>
+              {students.length===0
+                ? <><div style={{fontSize:48,marginBottom:14}}>🪵</div><div style={{fontSize:17,marginBottom:6,color:C.text}}>Nenhum aluno cadastrado</div><div style={{fontSize:13}}>Toque em + para adicionar</div></>
+                : <><div style={{fontSize:32,marginBottom:10}}>🔍</div><div style={{fontSize:15,color:C.text}}>Nenhum aluno encontrado</div></>
+              }
+            </div>
+          : filteredStudents.map(st => {
               const t      = st.taskIndex<20 ? ALL_TASKS[st.taskIndex] : null;
               const sCol   = st.status==="trancado"?"#e05050":st.needsRenewal?C.warn:st.pendingReposicoes>0?C.amberL:"#38a048";
               const sLbl   = st.status==="trancado"?"TRANCADO":st.needsRenewal?"RENOVAR":st.pendingReposicoes>0?`${st.pendingReposicoes} A REPOR`:"ATIVO";
               const tShort = TURMAS.find(tr=>tr.id===st.turma)?.label?.split(" · ")[0]||"";
+              const isEditing = editName?.id === st.id;
               return (
-                <button key={st.id} onClick={()=>{setSelId(st.id);setScreen("student");setConfirmDel(false);setMigrateConf(false);}} style={{display:"block",width:"100%",background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",marginBottom:10,cursor:"pointer",textAlign:"left",boxSizing:"border-box"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
-                    <span style={{fontSize:17,fontWeight:"bold",color:C.text}}>{st.name}</span>
-                    <span style={{fontSize:11,color:sCol,fontWeight:"bold"}}>{sLbl}</span>
-                  </div>
-                  <div style={{display:"flex",justifyContent:"space-between"}}>
-                    <span style={{fontSize:12,color:C.muted}}>{t?`#${t.number} · ${t.name}`:"🎓 Concluído"}</span>
-                    <span style={{fontSize:11,color:C.dim}}>{tShort} · {st.mode==="pacote"?"Pacote":"Avulso"} · {st.totalClasses} aulas</span>
-                  </div>
-                  {st.mode==="pacote" && <div style={{display:"flex",gap:5,marginTop:9}}>{[0,1,2,3].map(i=><div key={i} style={{flex:1,height:5,borderRadius:3,background:i<st.fichaUsed?C.amber:C.card2}}/>)}</div>}
-                </button>
+                <div key={st.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,marginBottom:10,overflow:"hidden"}}>
+                  {isEditing
+                    ? <div style={{display:"flex",gap:8,padding:"10px 12px",alignItems:"center"}}>
+                        <input value={editName.value} onChange={e=>setEditName(n=>({...n,value:e.target.value}))} autoFocus
+                          style={{flex:1,background:C.card2,border:`1px solid ${C.amber}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:15,outline:"none"}} />
+                        <button onClick={doEditName} style={{background:C.amber,border:"none",color:"#17130e",borderRadius:8,padding:"10px 14px",fontWeight:"bold",cursor:"pointer",fontSize:13}}>✓</button>
+                        <button onClick={()=>setEditName(null)} style={{background:C.card2,border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"10px 10px",cursor:"pointer",fontSize:13}}>×</button>
+                      </div>
+                    : <button onClick={()=>{setSelId(st.id);setScreen("student");setConfirmDel(false);setMigrateConf(false);}} style={{display:"block",width:"100%",background:"transparent",border:"none",padding:"14px 16px",cursor:"pointer",textAlign:"left",boxSizing:"border-box"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
+                          <span style={{fontSize:17,fontWeight:"bold",color:C.text}}>{st.name}</span>
+                          <span style={{fontSize:11,color:sCol,fontWeight:"bold"}}>{sLbl}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between"}}>
+                          <span style={{fontSize:12,color:C.muted}}>{t?`#${t.number} · ${t.name}`:"🎓 Concluído"}</span>
+                          <span style={{fontSize:11,color:C.dim}}>{tShort} · {st.mode==="pacote"?"Pacote":"Avulso"} · {st.totalClasses} aulas</span>
+                        </div>
+                        {st.mode==="pacote" && <div style={{display:"flex",gap:5,marginTop:9}}>{[0,1,2,3].map(i=><div key={i} style={{flex:1,height:5,borderRadius:3,background:i<st.fichaUsed?C.amber:C.card2}}/>)}</div>}
+                      </button>
+                  }
+                  {!isEditing && (
+                    <button onClick={()=>setEditName({id:st.id,value:st.name})} style={{display:"block",width:"100%",background:"none",border:"none",borderTop:`1px solid ${C.border}`,color:C.dim,fontSize:11,padding:"6px 0",cursor:"pointer",textAlign:"center"}}>
+                      ✏️ Editar nome
+                    </button>
+                  )}
+                </div>
               );
             })
         }
