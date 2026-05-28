@@ -645,7 +645,7 @@ export default function WEMApp() {
                                   💰 R$ {ex} {ep?.paid ? "✓ "+ep.date : "pendente"}
                                 </button>
                               )}
-                              {done && (
+                              {stage === "concluida" && (
                                 <button onClick={() => setEditTaskDate(isEdTask ? null : {taskIdx:t.number-1, value:cDate?toIso(cDate):todISO()})}
                                   style={{ fontSize:10, padding:"2px 8px", borderRadius:6, border:`1px solid ${isEdTask?C.amber:"#2d6a30"}`, background:isEdTask?C.amber:"none", color:isEdTask?"#17130e":"#38a048", cursor:"pointer", fontWeight:"bold" }}>
                                   {isEdTask ? "cancelar" : cDate ? "✓ "+cDate : "✏️ sem data"}
