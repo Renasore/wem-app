@@ -162,6 +162,8 @@ export default function WEMApp() {
   const [editAvDate,    setEditAvDate]    = useState(null);
   const [dashFilter,    setDashFilter]    = useState("all");
   const [dashTab,       setDashTab]       = useState("financeiro");
+  const [dashMonth,     setDashMonth]     = useState(-1); // -1 = mês atual
+  const [dashCompare,   setDashCompare]   = useState(false);
   const [showNotif,     setShowNotif]     = useState(false);
   const [search,        setSearch]        = useState("");
   const [listFilter,    setListFilter]    = useState("all");
@@ -396,6 +398,7 @@ export default function WEMApp() {
 
   const getAlerts = () => {
     const a = [];
+    const now = new Date();
     students.forEach(s => {
       const t = TURMAS.find(t => t.id===s.turma)?.label?.split(" · ")[0]||"";
       if (s.status === "trancado")
@@ -404,6 +407,20 @@ export default function WEMApp() {
         a.push({ icon:"⚠️", color:C.warn, msg:`${s.name} — renovar ficha`, sub:t, id:s.id });
       else if (s.pendingReposicoes >= 2)
         a.push({ icon:"🔄", color:C.amberL, msg:`${s.name} — ${s.pendingReposicoes} reposições`, sub:t, id:s.id });
+      // Aluno avulso ausente há mais de 1 mês
+      if (s.mode === "avulsa" && s.status !== "trancado") {
+        const aulas = s.classLog.filter(e => e.type !== "falta");
+        if (aulas.length > 0) {
+          const ultima = aulas[0]; // classLog é mais recente primeiro
+          try {
+            const [d,m,y] = ultima.date.split("/");
+            const dataUltima = new Date(+y, +m-1, +d);
+            const dias = Math.floor((now - dataUltima) / (1000*60*60*24));
+            if (dias > 30)
+              a.push({ icon:"📅", color:"#a0a0e8", msg:`${s.name} — ausente há ${dias} dias`, sub:"Avulso · última aula: "+ultima.date, id:s.id });
+          } catch(e) {}
+        }
+      }
       const p = calcPend(s);
       if (p > 0 && s.status !== "trancado")
         a.push({ icon:"💰", color:"#e05050", msg:`${s.name} — R$ ${p} em aberto`, sub:t, id:s.id });
@@ -757,15 +774,26 @@ export default function WEMApp() {
   // SCREEN: DASHBOARD
   // ════════════════════════════════════════════════════════════
   if (screen === "dashboard") {
-    const now=new Date(), curM=now.getMonth()+1, curY=now.getFullYear();
+    const now=new Date(), curY=now.getFullYear();
+    // dashMonth: -1=mês atual, 0=jan, 1=fev, ...
+    const selDate = dashMonth === -1 ? now : new Date(curY, dashMonth, 1);
+    const curM = selDate.getMonth()+1, selY = selDate.getFullYear();
     const fil = dashFilter==="all" ? students : students.filter(s => s.turma===dashFilter);
-    const last6 = Array.from({length:6}, (_,i) => { const d=new Date(curY,now.getMonth()-5+i,1); return {m:d.getMonth()+1,y:d.getFullYear(),label:MONTHS[d.getMonth()]}; });
-    const byM = last6.map(({m,y,label}) => { let v=0; fil.forEach(s => { (s.renewalLog||[]).forEach(r => { if(r.paid&&inM(r.paidDate,m,y))v+=r.value; }); (s.avulsaLog||[]).forEach(a => { if(a.paid&&inM(a.paidDate,m,y))v+=a.value; }); Object.entries(s.extraPayments||{}).forEach(([n,ep]) => { if(ep.paid&&inM(ep.date,m,y))v+=EXTRA_COSTS[n]||0; }); }); return {label,val:v}; });
-    let recM=0,recY=0,pendAll=0,srcRen=0,srcAv=0,srcEx=0;
+    const last6 = Array.from({length:6}, (_,i) => { const d=new Date(selY,selDate.getMonth()-5+i,1); return {m:d.getMonth()+1,y:d.getFullYear(),label:MONTHS[d.getMonth()]}; });
+    const byM = last6.map(({m,y,label}) => {
+      let ren=0,av=0,ex=0;
+      fil.forEach(s => {
+        (s.renewalLog||[]).forEach(r => { if(r.paid&&inM(r.paidDate,m,y))ren+=r.value; });
+        (s.avulsaLog||[]).forEach(a => { if(a.paid&&inM(a.paidDate,m,y))av+=a.value; });
+        Object.entries(s.extraPayments||{}).forEach(([n,ep]) => { if(ep.paid&&inM(ep.date,m,y))ex+=EXTRA_COSTS[n]||0; });
+      });
+      return {label,ren,av,ex,val:ren+av+ex};
+    });
+    let recM=0,recMRen=0,recMAv=0,recMEx=0,recY=0,pendAll=0,srcRen=0,srcAv=0,srcEx=0;
     fil.forEach(s => {
-      (s.renewalLog||[]).forEach(r => { if(r.paid){if(inM(r.paidDate,curM,curY))recM+=r.value;if(inY(r.paidDate,curY)){recY+=r.value;srcRen+=r.value;}}else pendAll+=r.value; });
-      (s.avulsaLog||[]).forEach(a => { if(a.paid){if(inM(a.paidDate,curM,curY))recM+=a.value;if(inY(a.paidDate,curY)){recY+=a.value;srcAv+=a.value;}}else pendAll+=a.value; });
-      Object.entries(s.extraPayments||{}).forEach(([n,ep]) => { if(ep.paid){if(inM(ep.date,curM,curY))recM+=EXTRA_COSTS[n]||0;if(inY(ep.date,curY)){recY+=EXTRA_COSTS[n]||0;srcEx+=EXTRA_COSTS[n]||0;}}else pendAll+=EXTRA_COSTS[n]||0; });
+      (s.renewalLog||[]).forEach(r => { if(r.paid){if(inM(r.paidDate,curM,selY)){recM+=r.value;recMRen+=r.value;}if(inY(r.paidDate,selY)){recY+=r.value;srcRen+=r.value;}}else pendAll+=r.value; });
+      (s.avulsaLog||[]).forEach(a => { if(a.paid){if(inM(a.paidDate,curM,selY)){recM+=a.value;recMAv+=a.value;}if(inY(a.paidDate,selY)){recY+=a.value;srcAv+=a.value;}}else pendAll+=a.value; });
+      Object.entries(s.extraPayments||{}).forEach(([n,ep]) => { if(ep.paid){if(inM(ep.date,curM,selY)){recM+=EXTRA_COSTS[n]||0;recMEx+=EXTRA_COSTS[n]||0;}if(inY(ep.date,selY)){recY+=EXTRA_COSTS[n]||0;srcEx+=EXTRA_COSTS[n]||0;}}else pendAll+=EXTRA_COSTS[n]||0; });
     });
     const srcData = [{name:"Renovações",value:srcRen,color:C.amberL},{name:"Avulsas",value:srcAv,color:"#5ab030"},{name:"Extras",value:srcEx,color:"#a0a0e8"}].filter(d => d.value>0);
     const tickets = fil.filter(s => calcRec(s)>0).map(s => calcRec(s));
@@ -799,9 +827,32 @@ export default function WEMApp() {
           </div>
           {dashTab==="financeiro" && (
             <div>
-              <SR items={[{label:"ESTE MÊS",value:`R$ ${recM}`,color:"#38a048"},{label:"ESTE ANO",value:`R$ ${recY}`,color:C.amberL},{label:"TICKET MÉDIO",value:`R$ ${avgTicket}`,color:C.amber}]} />
+              {/* Seletor de mês */}
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,color:C.muted,letterSpacing:1.5,marginBottom:6}}>PERÍODO</div>
+                <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
+                  <button onClick={()=>setDashMonth(-1)} style={{flexShrink:0,padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:"bold",cursor:"pointer",border:`1px solid ${dashMonth===-1?C.amber:C.border}`,background:dashMonth===-1?"#2a1e06":C.card2,color:dashMonth===-1?C.amberL:C.muted}}>Mês atual</button>
+                  {MONTHS.map((m,i)=>(
+                    <button key={i} onClick={()=>setDashMonth(i)} style={{flexShrink:0,padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:"bold",cursor:"pointer",border:`1px solid ${dashMonth===i?C.amber:C.border}`,background:dashMonth===i?"#2a1e06":C.card2,color:dashMonth===i?C.amberL:C.muted}}>{m}</button>
+                  ))}
+                </div>
+              </div>
+              <SR items={[{label:"MÊS",value:`R$ ${recM}`,color:"#38a048"},{label:"ANO",value:`R$ ${recY}`,color:C.amberL},{label:"TICKET MÉDIO",value:`R$ ${avgTicket}`,color:C.amber}]} />
+              {/* Breakdown do mês */}
+              <CC title={`DETALHAMENTO — ${MONTHS[curM-1]}/${selY}`}>
+                {[["📦 Renovações (pacote)",recMRen,C.amberL],["🎫 Aulas avulsas",recMAv,"#5ab030"],["🔧 Extras",recMEx,"#a0a0e8"]].map(([lbl,val,col])=>(
+                  <div key={lbl} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <span style={{fontSize:13,color:C.text}}>{lbl}</span>
+                    <span style={{fontSize:14,fontWeight:"bold",color:val>0?col:C.dim}}>R$ {val}</span>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8}}>
+                  <span style={{fontSize:13,fontWeight:"bold",color:C.text}}>Total</span>
+                  <span style={{fontSize:16,fontWeight:"bold",color:"#38a048"}}>R$ {recM}</span>
+                </div>
+              </CC>
               <CC title="FATURAMENTO MENSAL (R$)">
-                <ResponsiveContainer width="100%" height={160}><BarChart data={byM} margin={{top:0,right:0,left:-20,bottom:0}}><XAxis dataKey="label" tick={{fill:C.muted,fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fill:C.muted,fontSize:10}} axisLine={false} tickLine={false}/><Tooltip contentStyle={tt} formatter={v=>[`R$ ${v}`,"Recebido"]} cursor={{fill:"rgba(255,255,255,0.05)"}}/><Bar dataKey="val" fill={C.amber} radius={[4,4,0,0]}/></BarChart></ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={160}><BarChart data={byM} margin={{top:0,right:0,left:-20,bottom:0}}><XAxis dataKey="label" tick={{fill:C.muted,fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fill:C.muted,fontSize:10}} axisLine={false} tickLine={false}/><Tooltip contentStyle={tt} formatter={(v,n)=>[`R$ ${v}`,n==="ren"?"Renovações":n==="av"?"Avulsas":"Extras"]} cursor={{fill:"rgba(255,255,255,0.05)"}}/><Bar dataKey="ren" stackId="a" fill={C.amberL} name="ren"/><Bar dataKey="av" stackId="a" fill="#5ab030" name="av"/><Bar dataKey="ex" stackId="a" fill="#a0a0e8" name="ex" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer>
               </CC>
               {srcData.length>0 && (
                 <CC title="RECEITA POR FONTE (ANO)">
