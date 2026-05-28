@@ -83,7 +83,7 @@ const mkSt = (name, mode, turma, phone="") => ({
   entryDate: todBR(), lockDate: null, lockReason: null, conclusionDate: null,
   fichaUsed: 0, fichaNum: 1, needsRenewal: false,
   totalClasses: 0, totalFaltas: 0, pendingReposicoes: 0, taskIndex: 0,
-  taskCompletions: {}, classLog: [], extraPayments: {}, renewalLog: [], avulsaLog: [],
+  taskCompletions: {}, taskStages: {}, classLog: [], extraPayments: {}, renewalLog: [], avulsaLog: [],
 });
 
 // ── ESTILOS ───────────────────────────────────────────────────
@@ -199,6 +199,29 @@ export default function WEMApp() {
     return () => clearTimeout(saveTimer.current);
   }, [students, visitors, dbStatus]);
 
+  // Trancamento automático de avulso após 1 mês sem presença
+  useEffect(() => {
+    if (dbStatus !== "ok") return;
+    const now = new Date();
+    let changed = false;
+    const updated = students.map(s => {
+      if (s.mode !== "avulsa" || s.status === "trancado") return s;
+      const aulas = s.classLog.filter(e => e.type === "presenca" || e.type === "reposicao");
+      if (aulas.length === 0) return s;
+      try {
+        const [d,m,y] = aulas[0].date.split("/");
+        const dataUltima = new Date(+y, +m-1, +d);
+        const dias = Math.floor((now - dataUltima) / (1000*60*60*24));
+        if (dias > 30) {
+          changed = true;
+          return { ...s, status:"trancado", lockDate:aulas[0].date, lockReason:"Ausência superior a 1 mês (avulso)" };
+        }
+      } catch(e) {}
+      return s;
+    });
+    if (changed) setStudents(updated);
+  }, [dbStatus]);
+
   // ── HELPERS ───────────────────────────────────────────────────
   const showMsg = (txt, type="ok") => { setToast({ msg:txt, type }); setTimeout(() => setToast(null), 3000); };
   const upd     = (id, fn) => setStudents(p => p.map(s => s.id === id ? fn(s) : s));
@@ -275,7 +298,13 @@ export default function WEMApp() {
     showMsg("Ficha renovada! ✓");
   }
 
-  function doTrancar(reason) { upd(sel.id, s => ({...s, status:"trancado", lockDate:todBR(), lockReason:reason})); setLockPicker(false); showMsg("Curso trancado", "warn"); }
+  function doTrancar(reason) {
+    const dateVal = document.getElementById("lock-date-input")?.value;
+    const lockDate = dateVal ? fmtD(dateVal) : todBR();
+    upd(sel.id, s => ({...s, status:"trancado", lockDate, lockReason:reason}));
+    setLockPicker(false);
+    showMsg("Curso trancado", "warn");
+  }
   function doDesbloq()       { if (sel) { upd(sel.id, s => ({...s, status:"active", fichaUsed:0, needsRenewal:false, lockDate:null, lockReason:null})); showMsg("Desbloqueado ✓"); } }
   function doMigrar()        { if (!sel) return; const nm = sel.mode==="pacote"?"avulsa":"pacote"; upd(sel.id, s => ({...s, mode:nm, fichaUsed:0, needsRenewal:false})); setMigrateConf(false); showMsg(`Migrado para ${nm==="pacote"?"Pacote":"Avulso"} ✓`); }
 
@@ -325,6 +354,30 @@ export default function WEMApp() {
   const doExtraPaid = (n, paid, iso) => { upd(selId, s => ({...s, extraPayments:{...s.extraPayments,[n]:{paid,date:paid?fmtD(iso):null}}})); setEditExtra(null); showMsg(paid?"Pago ✓":"Pendente", paid?"ok":"warn"); };
   const doRenPaid   = (rid, paid)    => { upd(selId, s => ({...s, renewalLog:s.renewalLog.map(r => r.id===rid?{...r,paid,paidDate:paid?todBR():null}:r)})); showMsg(paid?"Pago ✓":"Pendente"); };
   const doRenDate   = (rid, iso)     => { upd(selId, s => ({...s, renewalLog:s.renewalLog.map(r => r.id===rid?{...r,paidDate:fmtD(iso)}:r)})); setEditRenDate(null); showMsg("Data atualizada ✓"); };
+  function doUndoLastPresenca() {
+    if (!sel) return;
+    const lastPresenca = sel.classLog.find(e => e.type === "presenca");
+    if (!lastPresenca) { showMsg("Nenhuma presença para desfazer", "info"); return; }
+    upd(sel.id, s => {
+      let updates = {
+        classLog: s.classLog.filter(e => e.id !== lastPresenca.id),
+        totalClasses: Math.max(0, s.totalClasses - 1),
+      };
+      // Se era avulso, remove o pagamento associado
+      if (s.mode !== "pacote") {
+        updates.avulsaLog = (s.avulsaLog||[]).filter(a => a.entryId !== lastPresenca.id);
+      }
+      // Desfaz uso da ficha
+      if (s.mode === "pacote") {
+        const nf = Math.max(0, s.fichaUsed - 1);
+        updates.fichaUsed = nf;
+        updates.needsRenewal = nf >= 4;
+      }
+      return { ...s, ...updates };
+    });
+    showMsg("Última presença desfeita ✓", "warn");
+  }
+
   const doDelEntry  = (eid) => {
     upd(selId, s => {
       const entry = s.classLog.find(e => e.id === eid);
@@ -505,32 +558,59 @@ export default function WEMApp() {
   // ════════════════════════════════════════════════════════════
   // SCREEN: TASKS
   // ════════════════════════════════════════════════════════════
-  if (screen === "tasks" && sel) return (
-    <div style={S.page}>
-      <Hdr title={`Tarefa — ${sel.name}`} onBack={() => setScreen("student")} />
-      <div style={{ padding:16, paddingBottom:32 }}>
-        {MODULES.map(mod => (
-          <div key={mod.name} style={{ marginBottom:20 }}>
-            <div style={{ fontSize:10, color:C.amber, fontWeight:"bold", letterSpacing:2, textTransform:"uppercase", marginBottom:8 }}>{mod.name}</div>
-            {mod.tasks.map(tn => {
-              const idx = ALL_TASKS.findIndex(t => t.name===tn && t.module===mod.name);
-              const t = ALL_TASKS[idx];
-              const done = idx < sel.taskIndex, cur = idx === sel.taskIndex;
-              return (
-                <button key={tn} onClick={() => doSetTask(idx)} style={{ display:"flex", alignItems:"center", width:"100%", background:cur?"#2a1e06":C.card, border:`1px solid ${cur?C.amber:C.border}`, borderRadius:10, padding:"11px 14px", marginBottom:6, cursor:"pointer", gap:10, boxSizing:"border-box" }}>
-                  <span style={{ fontSize:12, color:done?"#38a048":C.muted, minWidth:24, textAlign:"right" }}>{done ? "✓" : `#${t.number}`}</span>
-                  <span style={{ color:cur?C.amberL:done?C.muted:C.text, fontWeight:cur?"bold":"normal", fontSize:15, flex:1, textAlign:"left" }}>{t.name}</span>
-                  {cur && <span style={{ color:C.amber, fontSize:12 }}>◀ atual</span>}
-                  {done && sel.taskCompletions[idx] && <span style={{ color:"#38a048", fontSize:11 }}>{sel.taskCompletions[idx]}</span>}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+  if (screen === "tasks" && sel) {
+    const STAGES = {
+      none:       { icon:"⬜", label:"Não iniciada", color:C.muted,   bg:C.card,   bd:C.border },
+      iniciada:   { icon:"🔶", label:"Iniciada",     color:C.amberL,  bg:"#2a1e06",bd:C.gold },
+      concluida:  { icon:"✅", label:"Concluída",    color:"#38a048", bg:"#0e2814",bd:"#1e5020" },
+    };
+    function cycleStage(idx) {
+      const cur = sel.taskStages?.[idx] || "none";
+      const next = cur==="none"?"iniciada":cur==="iniciada"?"concluida":"none";
+      upd(sel.id, s => {
+        const stages = {...(s.taskStages||{}), [idx]:next};
+        const comps  = {...s.taskCompletions};
+        if (next==="concluida" && !comps[idx]) comps[idx]=todBR();
+        if (next==="none") delete comps[idx];
+        return {...s, taskStages:stages, taskCompletions:comps};
+      });
+    }
+    return (
+      <div style={S.page}>
+        <Hdr title={`Tarefas — ${sel.name}`} onBack={() => setScreen("student")} />
+        <div style={{padding:"10px 16px",background:"#1a1208",borderBottom:`1px solid ${C.border}`,display:"flex",gap:12}}>
+          {Object.entries(STAGES).map(([k,v])=>(
+            <div key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:v.color}}><span>{v.icon}</span>{v.label}</div>
+          ))}
+        </div>
+        <div style={{ padding:16, paddingBottom:32 }}>
+          {MODULES.map(mod => (
+            <div key={mod.name} style={{ marginBottom:20 }}>
+              <div style={{ fontSize:10, color:C.amber, fontWeight:"bold", letterSpacing:2, textTransform:"uppercase", marginBottom:8 }}>{mod.name}</div>
+              {mod.tasks.map(tn => {
+                const idx   = ALL_TASKS.findIndex(t => t.name===tn && t.module===mod.name);
+                const t     = ALL_TASKS[idx];
+                const stage = sel.taskStages?.[idx] || "none";
+                const st    = STAGES[stage];
+                return (
+                  <button key={tn} onClick={() => cycleStage(idx)} style={{ display:"flex", alignItems:"center", width:"100%", background:st.bg, border:`1px solid ${st.bd}`, borderRadius:10, padding:"12px 14px", marginBottom:6, cursor:"pointer", gap:10, boxSizing:"border-box" }}>
+                    <span style={{ fontSize:18 }}>{st.icon}</span>
+                    <div style={{ flex:1, textAlign:"left" }}>
+                      <div style={{ color:st.color, fontWeight:stage!=="none"?"bold":"normal", fontSize:15 }}>{t.name}</div>
+                      <div style={{ fontSize:11, color:C.dim, marginTop:2 }}>#{t.number} · {mod.name.split("·")[1]?.trim()||""}</div>
+                    </div>
+                    {stage==="concluida" && sel.taskCompletions[idx] && <span style={{ fontSize:11, color:"#38a048" }}>{sel.taskCompletions[idx]}</span>}
+                    <span style={{ fontSize:11, color:C.dim }}>toque para avançar</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <Toast toast={toast} />
       </div>
-      <Toast toast={toast} />
-    </div>
-  );
+    );
+  }
 
   // ════════════════════════════════════════════════════════════
   // SCREEN: HISTORY
@@ -1146,7 +1226,9 @@ export default function WEMApp() {
           )}
           {lockPicker && (
             <div style={{background:"#2d1a1a",border:"1px solid #8b2020",borderRadius:12,padding:14,marginBottom:12}}>
-              <div style={{fontSize:13,color:"#e05050",fontWeight:"bold",marginBottom:10}}>Motivo do trancamento</div>
+              <div style={{fontSize:13,color:"#e05050",fontWeight:"bold",marginBottom:10}}>Data do trancamento</div>
+              <input id="lock-date-input" type="date" defaultValue={todISO()} style={{width:"100%",background:C.card2,border:`1px solid ${C.amber}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:12,colorScheme:"dark"}} />
+              <div style={{fontSize:13,color:"#e05050",fontWeight:"bold",marginBottom:8}}>Motivo</div>
               {LOCK_REASONS.map(r => <button key={r} onClick={()=>doTrancar(r)} style={{display:"block",width:"100%",background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,padding:"10px 14px",marginBottom:6,cursor:"pointer",textAlign:"left",fontSize:14,boxSizing:"border-box"}}>{r}</button>)}
               <button onClick={()=>setLockPicker(false)} style={{width:"100%",background:"none",border:"none",color:C.muted,padding:"6px 0",cursor:"pointer",fontSize:13}}>Cancelar</button>
             </div>
@@ -1268,6 +1350,10 @@ export default function WEMApp() {
               </div>
             </div>
           )}
+
+          <button onClick={doUndoLastPresenca} style={{width:"100%",background:"none",border:`1px solid ${C.border}`,color:C.muted,borderRadius:10,padding:"10px 0",fontSize:13,cursor:"pointer",marginBottom:8}}>
+            ↩️ Desfazer última presença
+          </button>
 
           {confirmDel
             ? <div style={{background:"#3a0808",border:"1px solid #8b2020",borderRadius:10,padding:14,textAlign:"center"}}>
