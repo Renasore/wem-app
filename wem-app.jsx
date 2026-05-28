@@ -672,7 +672,10 @@ export default function WEMApp() {
                               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:2 }}>
                                 {aulas.map(e => {
                                   const taskEntry = e.tasks?.find(tk => tk.taskIndex === t.number-1);
-                                  const stg = taskEntry?.stage || "none";
+                                  // Para registros antigos sem stage, usa o estágio atual da tarefa
+                                  const stg = taskEntry?.stage && taskEntry.stage !== "none"
+                                    ? taskEntry.stage
+                                    : (sel.taskStages?.[t.number-1] || "none");
                                   const SI = {
                                     none:      { icon:"⬜", color:C.muted,  bg:C.card2,   bd:C.border },
                                     iniciada:  { icon:"🔶", color:C.amberL, bg:"#2a1e06", bd:C.gold },
