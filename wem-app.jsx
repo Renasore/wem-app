@@ -245,30 +245,37 @@ export default function WEMApp() {
     if (!sel) return;
     if (sel.status === "trancado") { showMsg("Aluno trancado.", "err"); return; }
     if (type === "reposicao" && sel.pendingReposicoes <= 0) { showMsg("Sem reposições pendentes.", "info"); return; }
-    setTaskPicker({ type, selected: sel.taskIndex < 20 ? [sel.taskIndex] : [] });
+    // Carregar estágios existentes do aluno e pré-selecionar os não-"none"
+    const existingStages = sel.taskStages || {};
+    const preSelected = Object.entries(existingStages).filter(([,v])=>v!=="none").map(([k])=>+k);
+    setTaskPicker({ type, selected: preSelected, stages: {...existingStages} });
   }
 
   function confirmAula() {
     if (!taskPicker || taskPicker.selected.length === 0) { showMsg("Selecione ao menos uma tarefa.", "warn"); return; }
-    const { type, selected } = taskPicker;
+    const { type, selected, stages } = taskPicker;
     const sorted = [...selected].sort((a,b) => a-b);
     upd(sel.id, s => {
       const entry = { id:uid(), date:todBR(), type, tasks:sorted.map(i => ({ taskIndex:i, taskName:ALL_TASKS[i]?.name||"—" })) };
-      const comps = { ...s.taskCompletions };
-      sorted.forEach(i => { if (!comps[i]) comps[i] = todBR(); });
-      // NÃO avança taskIndex automaticamente — usuário controla manualmente
+      // Salvar taskCompletions (concluídas) e taskStages (todos os estágios)
+      const comps  = { ...s.taskCompletions };
+      const newStages = { ...(s.taskStages||{}), ...(stages||{}) };
+      sorted.forEach(i => {
+        if ((stages?.[i] === "concluida") && !comps[i]) comps[i] = todBR();
+        if (stages?.[i] === "none") delete comps[i];
+      });
       if (type === "reposicao") {
         let done = false;
         const log = s.classLog.map(e => { if (!done && e.type==="falta" && !e.reposta) { done=true; return {...e,reposta:true}; } return e; });
-        return { ...s, pendingReposicoes:s.pendingReposicoes-1, totalFaltas:s.totalFaltas-1, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...log] };
+        return { ...s, pendingReposicoes:s.pendingReposicoes-1, totalFaltas:s.totalFaltas-1, totalClasses:s.totalClasses+1, taskCompletions:comps, taskStages:newStages, classLog:[entry,...log] };
       }
       if (s.mode !== "pacote") {
         const av = { id:uid(), date:todBR(), value:PRECO.avulsa, paid:false, paidDate:null, entryId:entry.id };
-        return { ...s, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...s.classLog], avulsaLog:[...(s.avulsaLog||[]),av] };
+        return { ...s, totalClasses:s.totalClasses+1, taskCompletions:comps, taskStages:newStages, classLog:[entry,...s.classLog], avulsaLog:[...(s.avulsaLog||[]),av] };
       }
-      if (s.needsRenewal) return { ...s, fichaUsed:1, needsRenewal:false, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...s.classLog] };
+      if (s.needsRenewal) return { ...s, fichaUsed:1, needsRenewal:false, totalClasses:s.totalClasses+1, taskCompletions:comps, taskStages:newStages, classLog:[entry,...s.classLog] };
       const nf = s.fichaUsed + 1;
-      return { ...s, fichaUsed:nf, needsRenewal:nf>=4, totalClasses:s.totalClasses+1, taskCompletions:comps, classLog:[entry,...s.classLog] };
+      return { ...s, fichaUsed:nf, needsRenewal:nf>=4, totalClasses:s.totalClasses+1, taskCompletions:comps, taskStages:newStages, classLog:[entry,...s.classLog] };
     });
     showMsg(`${type === "presenca" ? "Presença" : "Reposição"} registrada ✓`);
     setTaskPicker(null);
@@ -308,10 +315,7 @@ export default function WEMApp() {
   function doDesbloq()       { if (sel) { upd(sel.id, s => ({...s, status:"active", fichaUsed:0, needsRenewal:false, lockDate:null, lockReason:null})); showMsg("Desbloqueado ✓"); } }
   function doMigrar()        { if (!sel) return; const nm = sel.mode==="pacote"?"avulsa":"pacote"; upd(sel.id, s => ({...s, mode:nm, fichaUsed:0, needsRenewal:false})); setMigrateConf(false); showMsg(`Migrado para ${nm==="pacote"?"Pacote":"Avulso"} ✓`); }
 
-  function doSetTask(idx) {
-    upd(selId, s => { const c = {...s.taskCompletions}; for (let i=s.taskIndex; i<idx; i++) if (!c[i]) c[i]=todBR(); return {...s, taskIndex:idx, taskCompletions:c}; });
-    setScreen("student"); showMsg("Tarefa atualizada ✓");
-  }
+
 
   function doAdd() {
     if (!form.name.trim()) return;
@@ -558,60 +562,6 @@ export default function WEMApp() {
   // ════════════════════════════════════════════════════════════
   // SCREEN: TASKS
   // ════════════════════════════════════════════════════════════
-  if (screen === "tasks" && sel) {
-    const STAGES = {
-      none:       { icon:"⬜", label:"Não iniciada", color:C.muted,   bg:C.card,   bd:C.border },
-      iniciada:   { icon:"🔶", label:"Iniciada",     color:C.amberL,  bg:"#2a1e06",bd:C.gold },
-      concluida:  { icon:"✅", label:"Concluída",    color:"#38a048", bg:"#0e2814",bd:"#1e5020" },
-    };
-    function cycleStage(idx) {
-      const cur = sel.taskStages?.[idx] || "none";
-      const next = cur==="none"?"iniciada":cur==="iniciada"?"concluida":"none";
-      upd(sel.id, s => {
-        const stages = {...(s.taskStages||{}), [idx]:next};
-        const comps  = {...s.taskCompletions};
-        if (next==="concluida" && !comps[idx]) comps[idx]=todBR();
-        if (next==="none") delete comps[idx];
-        return {...s, taskStages:stages, taskCompletions:comps};
-      });
-    }
-    return (
-      <div style={S.page}>
-        <Hdr title={`Tarefas — ${sel.name}`} onBack={() => setScreen("student")} />
-        <div style={{padding:"10px 16px",background:"#1a1208",borderBottom:`1px solid ${C.border}`,display:"flex",gap:12}}>
-          {Object.entries(STAGES).map(([k,v])=>(
-            <div key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:v.color}}><span>{v.icon}</span>{v.label}</div>
-          ))}
-        </div>
-        <div style={{ padding:16, paddingBottom:32 }}>
-          {MODULES.map(mod => (
-            <div key={mod.name} style={{ marginBottom:20 }}>
-              <div style={{ fontSize:10, color:C.amber, fontWeight:"bold", letterSpacing:2, textTransform:"uppercase", marginBottom:8 }}>{mod.name}</div>
-              {mod.tasks.map(tn => {
-                const idx   = ALL_TASKS.findIndex(t => t.name===tn && t.module===mod.name);
-                const t     = ALL_TASKS[idx];
-                const stage = sel.taskStages?.[idx] || "none";
-                const st    = STAGES[stage];
-                return (
-                  <button key={tn} onClick={() => cycleStage(idx)} style={{ display:"flex", alignItems:"center", width:"100%", background:st.bg, border:`1px solid ${st.bd}`, borderRadius:10, padding:"12px 14px", marginBottom:6, cursor:"pointer", gap:10, boxSizing:"border-box" }}>
-                    <span style={{ fontSize:18 }}>{st.icon}</span>
-                    <div style={{ flex:1, textAlign:"left" }}>
-                      <div style={{ color:st.color, fontWeight:stage!=="none"?"bold":"normal", fontSize:15 }}>{t.name}</div>
-                      <div style={{ fontSize:11, color:C.dim, marginTop:2 }}>#{t.number} · {mod.name.split("·")[1]?.trim()||""}</div>
-                    </div>
-                    {stage==="concluida" && sel.taskCompletions[idx] && <span style={{ fontSize:11, color:"#38a048" }}>{sel.taskCompletions[idx]}</span>}
-                    <span style={{ fontSize:11, color:C.dim }}>toque para avançar</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        <Toast toast={toast} />
-      </div>
-    );
-  }
-
   // ════════════════════════════════════════════════════════════
   // SCREEN: HISTORY
   // ════════════════════════════════════════════════════════════
@@ -1266,9 +1216,9 @@ export default function WEMApp() {
             {sel.taskIndex>=20
               ? <div style={{textAlign:"center",color:C.amberL,fontWeight:"bold",fontSize:16}}>🎓 CURSO CONCLUÍDO!</div>
               : task && (
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-                  <div><div style={{fontSize:11,color:C.muted}}>{task.module}</div><div style={{fontSize:17,fontWeight:"bold",color:C.text,marginTop:3}}>#{task.number} · {task.name}</div></div>
-                  <button onClick={()=>setScreen("tasks")} style={{background:"none",border:`1px solid ${C.border}`,color:C.amberL,borderRadius:8,padding:"7px 12px",fontSize:13,cursor:"pointer"}}>Alterar ▾</button>
+                <div>
+                  <div style={{fontSize:11,color:C.muted}}>{task.module}</div>
+                  <div style={{fontSize:17,fontWeight:"bold",color:C.text,marginTop:3}}>#{task.number} · {task.name}</div>
                 </div>
               )
             }
