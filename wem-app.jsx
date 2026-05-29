@@ -184,17 +184,23 @@ export default function WEMApp() {
   useEffect(() => {
     sbGet().then(d => {
       if (d.students.length > 0) {
-        // Corrigir taskCompletions: usar data da aula onde foi marcado como concluído
+        // Corrigir taskCompletions: usar data da PRIMEIRA aula onde a tarefa apareceu
         const fixed = d.students.map(s => {
           const comps = {...(s.taskCompletions||{})};
-          const stages = s.taskStages || {};
-          Object.entries(stages).forEach(([idx, stage]) => {
-            if (stage === "concluida") {
-              const aulaConc = (s.classLog||[]).find(e =>
-                e.type !== "falta" && e.tasks?.some(tk => tk.taskIndex === +idx && tk.stage === "concluida")
-              );
-              if (aulaConc) comps[idx] = aulaConc.date;
-            }
+          const allIdxs = new Set([
+            ...Object.keys(s.taskStages||{}),
+            ...Object.keys(s.taskCompletions||{})
+          ]);
+          allIdxs.forEach(idx => {
+            const aulasComTarefa = (s.classLog||[])
+              .filter(e => e.type !== "falta" && e.tasks?.some(tk => tk.taskIndex === +idx))
+              .sort((a,b) => {
+                try {
+                  const [ad,am,ay]=a.date.split("/"), [bd,bm,by]=b.date.split("/");
+                  return new Date(+ay,+am-1,+ad) - new Date(+by,+bm-1,+bd);
+                } catch { return 0; }
+              });
+            if (aulasComTarefa.length > 0) comps[idx] = aulasComTarefa[0].date;
           });
           return {...s, taskCompletions:comps};
         });
@@ -277,7 +283,7 @@ export default function WEMApp() {
       const comps  = { ...s.taskCompletions };
       const newStages = { ...(s.taskStages||{}), ...(stages||{}) };
       sorted.forEach(i => {
-        if (stages?.[i] === "concluida") comps[i] = entry.date; // data da aula, não de hoje
+        if (!comps[i]) comps[i] = entry.date; // data da PRIMEIRA aula com essa tarefa
         if (stages?.[i] === "none") delete comps[i];
       });
       if (type === "reposicao") {
