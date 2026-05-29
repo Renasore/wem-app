@@ -183,7 +183,23 @@ export default function WEMApp() {
   // Carregar do Supabase
   useEffect(() => {
     sbGet().then(d => {
-      if (d.students.length > 0) setStudents(d.students);
+      if (d.students.length > 0) {
+        // Corrigir taskCompletions: usar data da aula onde foi marcado como concluído
+        const fixed = d.students.map(s => {
+          const comps = {...(s.taskCompletions||{})};
+          const stages = s.taskStages || {};
+          Object.entries(stages).forEach(([idx, stage]) => {
+            if (stage === "concluida") {
+              const aulaConc = (s.classLog||[]).find(e =>
+                e.type !== "falta" && e.tasks?.some(tk => tk.taskIndex === +idx && tk.stage === "concluida")
+              );
+              if (aulaConc) comps[idx] = aulaConc.date;
+            }
+          });
+          return {...s, taskCompletions:comps};
+        });
+        setStudents(fixed);
+      }
       if (d.visitors.length > 0) setVisitors(d.visitors);
       setDbStatus("ok");
     }).catch(() => setDbStatus("error"));
@@ -261,7 +277,7 @@ export default function WEMApp() {
       const comps  = { ...s.taskCompletions };
       const newStages = { ...(s.taskStages||{}), ...(stages||{}) };
       sorted.forEach(i => {
-        if ((stages?.[i] === "concluida") && !comps[i]) comps[i] = todBR();
+        if (stages?.[i] === "concluida") comps[i] = entry.date; // data da aula, não de hoje
         if (stages?.[i] === "none") delete comps[i];
       });
       if (type === "reposicao") {
