@@ -692,8 +692,13 @@ export default function WEMApp() {
                             )}
                             {aulas.length > 0 && (
                               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:2 }}>
-                                {aulas.filter(e => {
-                                  // Encontrar a data em que a tarefa foi marcada como concluída no classLog
+                                {[...aulas].sort((a,b) => {
+                                  try {
+                                    const [ad,am,ay]=a.date.split("/"), [bd,bm,by]=b.date.split("/");
+                                    return new Date(+ay,+am-1,+ad) - new Date(+by,+bm-1,+bd);
+                                  } catch { return 0; }
+                                }).filter(e => {
+                                  // Ocultar registros após a data de conclusão
                                   const primeiraConc = aulas.find(a =>
                                     a.tasks?.find(tk => tk.taskIndex === t.number-1 && tk.stage === "concluida")
                                   );
@@ -1256,22 +1261,7 @@ export default function WEMApp() {
             </div>
           )}
 
-          {(() => {
-            const concluidasCount = Object.values(sel.taskStages||{}).filter(v=>v==="concluida").length;
-            const pct = Math.round((concluidasCount/20)*100);
-            return (
-              <div style={S.card}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{fontSize:11,color:C.muted,letterSpacing:1.5}}>PROGRESSO DAS TAREFAS</span>
-                  <span style={{fontSize:12,color:C.amberL}}>{concluidasCount}/20</span>
-                </div>
-                <div style={{height:8,borderRadius:4,background:C.card2,marginBottom:6,overflow:"hidden"}}>
-                  <div style={{height:"100%",borderRadius:4,background:`linear-gradient(to right,${C.amber},${C.amberL})`,width:`${pct}%`,transition:"width 0.3s"}}/>
-                </div>
-                {concluidasCount>=20 && <div style={{textAlign:"center",color:C.amberL,fontWeight:"bold",fontSize:16,marginTop:8}}>🎓 CURSO CONCLUÍDO!</div>}
-              </div>
-            );
-          })()}
+
 
           <div style={{fontSize:11,color:C.muted,letterSpacing:1.5,marginBottom:8}}>REGISTRAR</div>
           {(() => {
