@@ -168,6 +168,8 @@ export default function WEMApp() {
   const [search,        setSearch]        = useState("");
   const [listFilter,    setListFilter]    = useState("all");
   const [editName,      setEditName]      = useState(null); // {id, value}
+  const [editPhone,     setEditPhone]     = useState(false);
+  const [editTurma,     setEditTurma]     = useState(false);
   const [waScreen,      setWaScreen]      = useState(false);
   const [waSelected,    setWaSelected]    = useState([]);
   const [waMsg,         setWaMsg]         = useState("");
@@ -1205,11 +1207,36 @@ export default function WEMApp() {
           <button onClick={()=>setScreen("history")} style={{background:"#2a1e06",border:`1px solid ${C.gold}`,color:C.amberL,borderRadius:8,padding:"6px 12px",fontSize:13,cursor:"pointer",fontWeight:"bold"}}>📋 Histórico</button>
         </div>
         <div style={{padding:16,paddingBottom:32}}>
-          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:10}}>
-            {turmaLabel && <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:"bold",background:"#1a1a2e",color:"#a0a0e8",border:"1px solid #3a3a6a"}}>🗓 {turmaLabel}</span>}
-            {sel.phone   && <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:"bold",background:"#0e1a2e",color:"#60a0e8",border:"1px solid #1e3a6a"}}>📱 {sel.phone}</span>}
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+            <button onClick={()=>{setEditTurma(true);setEditPhone(false);}} style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:"bold",background:"#1a1a2e",color:"#a0a0e8",border:"1px solid #3a3a6a",cursor:"pointer"}}>🗓 {turmaLabel||"Sem turma"} ✏️</button>
+            <button onClick={()=>{setEditPhone(true);setEditTurma(false);}} style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:"bold",background:"#0e1a2e",color:"#60a0e8",border:"1px solid #1e3a6a",cursor:"pointer"}}>📱 {sel.phone||"Sem celular"} ✏️</button>
             <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:"bold",background:sel.mode==="pacote"?"#0e2814":"#2a1e06",color:sel.mode==="pacote"?"#38a048":C.amberL,border:`1px solid ${sel.mode==="pacote"?"#1e5020":"#5a3e10"}`}}>{sel.mode==="pacote"?"📦 Pacote":"🎫 Avulso"}</span>
           </div>
+          {editTurma && (
+            <div style={{background:C.card,border:`1px solid ${C.amber}`,borderRadius:12,padding:14,marginBottom:12}}>
+              <div style={{fontSize:12,color:C.amberL,fontWeight:"bold",marginBottom:10}}>Alterar turma</div>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                {TURMAS.map(t=>(
+                  <button key={t.id} onClick={()=>upd(sel.id,s=>({...s,turma:t.id}))}
+                    style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1px solid ${sel.turma===t.id?C.amber:C.border}`,background:sel.turma===t.id?"#2a1e06":C.card2,color:sel.turma===t.id?C.amberL:C.muted,fontWeight:"bold",fontSize:11,cursor:"pointer",lineHeight:1.3}}>
+                    {t.label.split(" · ")[0]}
+                  </button>
+                ))}
+              </div>
+              <button onClick={()=>setEditTurma(false)} style={{width:"100%",background:"none",border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"8px 0",cursor:"pointer",fontSize:13}}>Fechar</button>
+            </div>
+          )}
+          {editPhone && (
+            <div style={{background:C.card,border:`1px solid ${C.amber}`,borderRadius:12,padding:14,marginBottom:12}}>
+              <div style={{fontSize:12,color:C.amberL,fontWeight:"bold",marginBottom:10}}>Alterar celular</div>
+              <input defaultValue={sel.phone||""} id="edit-phone-input" inputMode="numeric" placeholder="(00) 00000-0000"
+                style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 14px",color:C.text,fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:10}} />
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{const v=document.getElementById("edit-phone-input")?.value||"";upd(sel.id,s=>({...s,phone:v.trim()}));setEditPhone(false);showMsg("Celular atualizado ✓");}} style={{flex:1,background:C.amber,border:"none",color:"#17130e",borderRadius:8,padding:"10px 0",fontWeight:"bold",cursor:"pointer",fontSize:14}}>Salvar</button>
+                <button onClick={()=>setEditPhone(false)} style={{flex:1,background:C.card2,border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"10px 0",cursor:"pointer",fontSize:14}}>Cancelar</button>
+              </div>
+            </div>
+          )}
 
           {sel.status === "trancado" && (
             <div style={{background:"#3a0808",border:"1px solid #8b2020",borderRadius:10,padding:"11px 14px",marginBottom:12}}>
