@@ -81,7 +81,7 @@ const waLink = (phone, msg) => { const n = phone.replace(/[^0-9]/g,""), full = n
 const mkSt = (name, mode, turma, phone="") => ({
   id: uid(), name, mode, turma, phone, status: "active",
   entryDate: todBR(), lockDate: null, lockReason: null, conclusionDate: null,
-  fichaUsed: 0, fichaNum: 1, needsRenewal: false,
+  fichaUsed: 0, fichaNum: 1, needsRenewal: false, pendingRenewal: false,
   totalClasses: 0, totalFaltas: 0, pendingReposicoes: 0, taskIndex: 0,
   taskCompletions: {}, taskStages: {}, classLog: [], extraPayments: {}, renewalLog: [], avulsaLog: [],
 });
@@ -160,6 +160,8 @@ export default function WEMApp() {
   const [editExtra,     setEditExtra]     = useState(null);
   const [editRenDate,   setEditRenDate]   = useState(null);
   const [editAvDate,    setEditAvDate]    = useState(null);
+  const [addPayment,    setAddPayment]    = useState(false); // modal pagamento manual
+  const [payForm,       setPayForm]       = useState({desc:"",value:"",date:""});
   const [dashFilter,    setDashFilter]    = useState("all");
   const [dashTab,       setDashTab]       = useState("financeiro");
   const [dashMonth,     setDashMonth]     = useState(-1); // -1 = mês atual
@@ -324,9 +326,10 @@ export default function WEMApp() {
     if (!sel || !sel.needsRenewal) return;
     upd(sel.id, s => {
       const r = { id:uid(), date:todBR(), mode:s.mode, value:PRECO[s.mode], paid:false, paidDate:null };
-      return { ...s, fichaUsed:0, fichaNum:(s.fichaNum||1)+1, needsRenewal:false, renewalLog:[...(s.renewalLog||[]),r] };
+      // needsRenewal só some quando o pagamento for confirmado — mantém alerta visual
+      return { ...s, fichaUsed:0, fichaNum:(s.fichaNum||1)+1, needsRenewal:false, pendingRenewal:true, renewalLog:[...(s.renewalLog||[]),r] };
     });
-    showMsg("Ficha renovada! ✓");
+    showMsg("Ficha renovada! Confirme o pagamento.");
   }
 
   function doTrancar(reason) {
@@ -380,7 +383,14 @@ export default function WEMApp() {
   const doUpdDate   = (eid, iso) => { upd(selId, s => ({...s, classLog:s.classLog.map(e => e.id===eid ? {...e,date:fmtD(iso)} : e)})); setEditDate(null); showMsg("Data atualizada ✓"); };
   const doUpdTDate  = (i, iso)   => { upd(selId, s => ({...s, taskCompletions:{...s.taskCompletions,[i]:fmtD(iso)}})); setEditTaskDate(null); showMsg("Data atualizada ✓"); };
   const doExtraPaid = (n, paid, iso) => { upd(selId, s => ({...s, extraPayments:{...s.extraPayments,[n]:{paid,date:paid?fmtD(iso):null}}})); setEditExtra(null); showMsg(paid?"Pago ✓":"Pendente", paid?"ok":"warn"); };
-  const doRenPaid   = (rid, paid)    => { upd(selId, s => ({...s, renewalLog:s.renewalLog.map(r => r.id===rid?{...r,paid,paidDate:paid?todBR():null}:r)})); showMsg(paid?"Pago ✓":"Pendente"); };
+  const doRenPaid   = (rid, paid)    => {
+    upd(selId, s => {
+      const newLog = s.renewalLog.map(r => r.id===rid?{...r,paid,paidDate:paid?todBR():null}:r);
+      const algumPendente = newLog.some(r => !r.paid);
+      return {...s, renewalLog:newLog, pendingRenewal:algumPendente};
+    });
+    showMsg(paid?"Pago ✓":"Pendente");
+  };
   const doRenDate   = (rid, iso)     => { upd(selId, s => ({...s, renewalLog:s.renewalLog.map(r => r.id===rid?{...r,paidDate:fmtD(iso)}:r)})); setEditRenDate(null); showMsg("Data atualizada ✓"); };
   function doUndoLastPresenca() {
     if (!sel) return;
@@ -434,6 +444,12 @@ export default function WEMApp() {
     });
     showMsg("Aula removida ✓", "warn");
   };
+  function doAddPayment() {
+    if (!payForm.desc.trim() || !payForm.value || !payForm.date) { showMsg("Preencha todos os campos","warn"); return; }
+    const p = { id:uid(), date:fmtD(payForm.date), desc:payForm.desc.trim(), value:+payForm.value, paid:true, paidDate:fmtD(payForm.date), manual:true };
+    upd(selId, s => ({ ...s, avulsaLog:[...(s.avulsaLog||[]),p] }));
+    setAddPayment(false); setPayForm({desc:"",value:"",date:""}); showMsg("Pagamento registrado ✓");
+  }
   const doAvPaid    = (aid, paid, iso) => { upd(selId, s => ({...s, avulsaLog:(s.avulsaLog||[]).map(a => a.id===aid?{...a,paid,paidDate:paid?fmtD(iso):null}:a)})); setEditAvDate(null); showMsg(paid?"Pago ✓":"Pendente"); };
 
   function doExport() {
@@ -814,22 +830,65 @@ export default function WEMApp() {
             </div>
           )}
 
+          {/* Pagamento Manual */}
+          <div style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:11,color:C.muted,letterSpacing:1.5}}>PAGAMENTOS MANUAIS</div>
+              <button onClick={()=>setAddPayment(v=>!v)} style={{background:"#1a6a2a",border:"none",color:"#fff",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:"bold",cursor:"pointer"}}>+ Adicionar</button>
+            </div>
+            {addPayment && (
+              <div style={{background:C.card,border:`1px solid ${C.amber}`,borderRadius:12,padding:14,marginBottom:10}}>
+                <div style={{fontSize:13,color:C.amberL,fontWeight:"bold",marginBottom:10}}>Novo pagamento manual</div>
+                <input value={payForm.desc} onChange={e=>setPayForm(f=>({...f,desc:e.target.value}))} placeholder="Descrição (ex: Material extra)" style={{...S.inp,marginBottom:8}} />
+                <div style={{display:"flex",gap:8,marginBottom:8}}>
+                  <input value={payForm.value} onChange={e=>setPayForm(f=>({...f,value:e.target.value}))} placeholder="Valor (R$)" inputMode="numeric" style={{...S.inp,flex:1}} />
+                  <input value={payForm.date} onChange={e=>setPayForm(f=>({...f,date:e.target.value}))} type="date" style={{...S.inp,flex:1,colorScheme:"dark"}} />
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={doAddPayment} style={{flex:1,background:"#1a6a2a",border:"none",color:"#fff",borderRadius:8,padding:"10px 0",fontWeight:"bold",cursor:"pointer",fontSize:14}}>Salvar</button>
+                  <button onClick={()=>setAddPayment(false)} style={{flex:1,background:C.card2,border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"10px 0",cursor:"pointer",fontSize:14}}>Cancelar</button>
+                </div>
+              </div>
+            )}
+            {(sel.avulsaLog||[]).filter(a=>a.manual).length===0 && !addPayment
+              ? <div style={{fontSize:12,color:C.dim,textAlign:"center",padding:"8px 0"}}>Nenhum pagamento manual</div>
+              : (sel.avulsaLog||[]).filter(a=>a.manual).map((a,i)=>(
+                <div key={a.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>{a.desc}</div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>{a.date}</div>
+                  </div>
+                  <span style={{fontSize:15,fontWeight:"bold",color:"#38a048"}}>R$ {a.value}</span>
+                </div>
+              ))
+            }
+          </div>
+
           <div>
             <div style={{ fontSize:11, color:C.muted, letterSpacing:1.5, marginBottom:10 }}>REGISTRO DE AULAS ({sel.classLog.length})</div>
             {sel.classLog.length === 0
               ? <div style={{ ...S.card, textAlign:"center", color:C.dim, fontSize:13 }}>Nenhuma aula</div>
               : (
                 <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden" }}>
-                  {sel.classLog.map((entry, i) => {
+                  {(() => {
+                    let presencaCount = 0;
+                    // Contar presenças em ordem cronológica (mais antigas primeiro)
+                    const logOrdenado = [...sel.classLog].sort((a,b) => {
+                      try { const [ad,am,ay]=a.date.split("/"),[bd,bm,by]=b.date.split("/"); return new Date(+ay,+am-1,+ad)-new Date(+by,+bm-1,+bd); } catch{return 0;}
+                    });
+                    const presencaNumMap = {};
+                    logOrdenado.forEach(e => { if(e.type==="presenca") presencaNumMap[e.id] = ++presencaCount; });
+                    return sel.classLog.map((entry, i) => {
                     const ts  = TS[entry.type] || TS.falta;
                     const isEd = editDate?.entryId === entry.id;
+                    const presNum = presencaNumMap[entry.id];
                     return (
                       <div key={entry.id} style={{ padding:"11px 14px", borderBottom:i<sel.classLog.length-1?`1px solid ${C.border}`:"none" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                           <span style={{ fontSize:18 }}>{ts.icon}</span>
                           <div style={{ flex:1 }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                              <span style={{ fontSize:14, color:ts.color, fontWeight:"bold" }}>{ts.label}</span>
+                              <span style={{ fontSize:14, color:ts.color, fontWeight:"bold" }}>{ts.label}{presNum ? ` #${presNum}` : ""}</span>
                               <button onClick={() => setEditDate(isEd ? null : {entryId:entry.id, value:entry.date?toIso(entry.date):todISO()})} style={{ background:isEd?C.amber:"none", border:`1px solid ${isEd?C.amber:C.border}`, color:isEd?"#17130e":C.muted, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer" }}>
                                 {isEd ? "cancelar" : "✏️ "+entry.date}
                               </button>
@@ -847,7 +906,7 @@ export default function WEMApp() {
                         )}
                       </div>
                     );
-                  })}
+                  });})()}
                 </div>
               )
             }
@@ -1250,6 +1309,12 @@ export default function WEMApp() {
             <div style={{background:"#2d1806",border:`1px solid ${C.warn}`,borderRadius:10,padding:"11px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div><div style={{color:C.warn,fontWeight:"bold",fontSize:14}}>⚠️ RENOVAÇÃO PENDENTE</div><div style={{color:C.muted,fontSize:12,marginTop:2}}>Falta agora = trancamento</div></div>
               <button onClick={doRenovar} style={{background:C.warn,border:"none",color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:"bold"}}>Renovar</button>
+            </div>
+          )}
+          {sel.pendingRenewal && sel.status==="active" && sel.mode==="pacote" && (
+            <div style={{background:"#1a0e2a",border:"1px solid #6a3a8a",borderRadius:10,padding:"11px 14px",marginBottom:12}}>
+              <div style={{color:"#c080e8",fontWeight:"bold",fontSize:14}}>💳 PAGAMENTO DA RENOVAÇÃO PENDENTE</div>
+              <div style={{color:C.muted,fontSize:12,marginTop:2}}>Confirme o pagamento no Histórico → Renovações</div>
             </div>
           )}
           {sel.status==="active" && (
