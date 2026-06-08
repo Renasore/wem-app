@@ -156,6 +156,7 @@ export default function WEMApp() {
   const [migrateConf,   setMigrateConf]   = useState(false);
   const [taskPicker,    setTaskPicker]    = useState(null);
   const [lockPicker,    setLockPicker]    = useState(false);
+  const [faltaDate,     setFaltaDate]     = useState(null); // null = picker fechado, string ISO = picker aberto
   const [editDate,      setEditDate]      = useState(null);
   const [editTaskDate,  setEditTaskDate]  = useState(null);
   const [editExtra,     setEditExtra]     = useState(null);
@@ -340,13 +341,14 @@ export default function WEMApp() {
     setTaskPicker(null);
   }
 
-  function doFalta() {
+  function doFalta(dateISO) {
     if (!sel) return;
     if (sel.mode === "avulsa") { showMsg("Avulso não recebe falta.", "info"); return; }
     if (sel.status === "trancado") { showMsg("Aluno trancado.", "err"); return; }
+    const entryDate = dateISO ? fmtD(dateISO) : todBR();
     let txt = "Falta registrada — reposição pendente", tp = "warn";
     upd(sel.id, s => {
-      const entry = { id:uid(), date:todBR(), type:"falta", tasks:[{ taskIndex:s.taskIndex, taskName:ALL_TASKS[s.taskIndex]?.name||"—" }] };
+      const entry = { id:uid(), date:entryDate, type:"falta", tasks:[{ taskIndex:s.taskIndex, taskName:ALL_TASKS[s.taskIndex]?.name||"—" }] };
       if (s.needsRenewal) { txt="⚠️ TRANCAMENTO — falta na troca de ficha!"; tp="err"; return { ...s, status:"trancado", lockDate:todBR(), lockReason:"Falta na troca de ficha", totalFaltas:s.totalFaltas+1, pendingReposicoes:s.pendingReposicoes+1, classLog:[entry,...s.classLog] }; }
       const nf=s.fichaUsed+1, nF=s.totalFaltas+1, nP=s.pendingReposicoes+1;
       if (nP>=5) { txt="⚠️ 5 reposições pendentes — somente reposição disponível"; tp="err"; }
@@ -1410,9 +1412,23 @@ export default function WEMApp() {
                 <div style={{display:"flex",gap:10,marginBottom:10}}>
                   <button onClick={()=>podePresenca&&openPicker("presenca")} disabled={!podePresenca}
                     style={{...S.btn(podePresenca?C.green:"#1c1c1c"),opacity:podePresenca?1:0.3,cursor:podePresenca?"pointer":"not-allowed"}}>✅ Presença</button>
-                  <button onClick={()=>podeFalta&&doFalta()} disabled={!podeFalta}
+                  <button onClick={()=>podeFalta&&setFaltaDate(todISO())} disabled={!podeFalta}
                     style={{...S.btn(podeFalta?C.red:"#1c1c1c"),opacity:podeFalta?1:0.3,cursor:podeFalta?"pointer":"not-allowed"}}>❌ Falta</button>
                 </div>
+                {faltaDate !== null && (
+                  <div style={{background:"#3a0808",border:"1px solid #7a1818",borderRadius:12,padding:14,marginBottom:12}}>
+                    <div style={{fontSize:13,fontWeight:"bold",color:"#e05050",marginBottom:10}}>❌ Data da falta</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,background:C.card2,borderRadius:8,padding:"8px 12px",marginBottom:12}}>
+                      <span style={{fontSize:12,color:C.muted}}>📅 Data:</span>
+                      <input type="date" value={faltaDate} onChange={e=>setFaltaDate(e.target.value)}
+                        style={{flex:1,background:"transparent",border:"none",color:"#e05050",fontSize:14,fontWeight:"bold",outline:"none",colorScheme:"dark"}} />
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>setFaltaDate(null)} style={{...S.btn(C.card2,C.muted),border:`1px solid ${C.border}`,flex:"none",padding:"10px 16px"}}>Cancelar</button>
+                      <button onClick={()=>{doFalta(faltaDate);setFaltaDate(null);}} style={{...S.btn(C.red)}}>Confirmar Falta</button>
+                    </div>
+                  </div>
+                )}
                 <div style={{display:"flex",gap:10,marginBottom:12}}>
                   <button onClick={()=>podeRep&&openPicker("reposicao")} disabled={!podeRep}
                     style={{...S.btn(podeRep?"#3a2a08":C.card2,podeRep?C.amberL:C.muted),border:`1px solid ${podeRep?C.gold:C.border}`,opacity:podeRep?1:0.3,cursor:podeRep?"pointer":"not-allowed"}}>
