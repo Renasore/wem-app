@@ -179,7 +179,8 @@ export default function WEMApp() {
   const [waBulkTargets, setWaBulkTargets] = useState([]);
   const [waBulkIdx,     setWaBulkIdx]     = useState(-1);
   const [waBulkMsg,     setWaBulkMsg]     = useState("");
-  const saveTimer = useRef(null);
+  const saveTimer    = useRef(null);
+  const dataLoaded   = useRef(false); // evita salvar antes de carregar
 
   const sel  = students.find(s => s.id === selId);
   const task = sel && sel.taskIndex < 20 ? ALL_TASKS[sel.taskIndex] : null;
@@ -188,7 +189,6 @@ export default function WEMApp() {
   useEffect(() => {
     sbGet().then(d => {
       if (d.students.length > 0) {
-        // Corrigir taskCompletions: usar data da PRIMEIRA aula onde a tarefa apareceu
         const fixed = d.students.map(s => {
           const comps = {...(s.taskCompletions||{})};
           const allIdxs = new Set([
@@ -211,6 +211,7 @@ export default function WEMApp() {
         setStudents(fixed);
       }
       if (d.visitors.length > 0) setVisitors(d.visitors);
+      dataLoaded.current = true; // marca que carregou antes de permitir salvar
       setDbStatus("ok");
     }).catch(() => setDbStatus("error"));
   }, []);
@@ -218,6 +219,7 @@ export default function WEMApp() {
   // Salvar no Supabase com debounce
   useEffect(() => {
     if (dbStatus !== "ok") return;
+    if (!dataLoaded.current) return; // não salvar antes de carregar
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       sbSet(students, visitors).catch(() => setDbStatus("error"));
