@@ -217,15 +217,25 @@ export default function WEMApp() {
   }, []);
 
   // Salvar no Supabase com debounce
-  // Salvar apenas quando students ou visitors mudam APÓS o carregamento inicial
-  // dbStatus foi removido das dependências para evitar salvar no momento do load
+  // Salvar imediatamente quando dados mudam (após carregamento)
   useEffect(() => {
     if (!dataLoaded.current) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      sbSet(students, visitors).catch(() => setDbStatus("error"));
-    }, 2000);
-    return () => clearTimeout(saveTimer.current);
+    sbSet(students, visitors).catch(() => setDbStatus("error"));
+  }, [students, visitors]);
+
+  // Garantir salvamento antes de fechar/recarregar a página
+  useEffect(() => {
+    const handleUnload = () => {
+      if (!dataLoaded.current) return;
+      // sendBeacon para garantir envio mesmo durante unload
+      const body = JSON.stringify({ students, visitors, updated_at: new Date().toISOString() });
+      navigator.sendBeacon(
+        `${SUPA_URL}/rest/v1/wem_data?id=eq.main`,
+        new Blob([body], { type: "application/json" })
+      );
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
   }, [students, visitors]);
 
   // Trancamento automático de avulso após 1 mês sem presença
