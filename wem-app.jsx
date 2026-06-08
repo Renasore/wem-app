@@ -888,12 +888,18 @@ export default function WEMApp() {
             {(sel.avulsaLog||[]).filter(a=>a.manual).length===0 && !addPayment
               ? <div style={{fontSize:12,color:C.dim,textAlign:"center",padding:"8px 0"}}>Nenhum pagamento manual</div>
               : (sel.avulsaLog||[]).filter(a=>a.manual).map((a,i)=>(
-                <div key={a.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>{a.desc}</div>
-                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>{a.date}</div>
+                <div key={a.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:6}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>{a.desc}</div>
+                      <div style={{fontSize:12,color:C.muted,marginTop:2}}>{a.date}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:15,fontWeight:"bold",color:"#38a048"}}>R$ {a.value}</span>
+                      <button onClick={()=>{ if(window.confirm(`Remover pagamento "${a.desc}"?`)) upd(selId,s=>({...s,avulsaLog:(s.avulsaLog||[]).filter(x=>x.id!==a.id)})); showMsg("Pagamento removido","warn"); }}
+                        style={{background:"#3a0808",border:"1px solid #7a1818",color:"#e05050",borderRadius:6,padding:"4px 8px",fontSize:13,cursor:"pointer"}}>🗑️</button>
+                    </div>
                   </div>
-                  <span style={{fontSize:15,fontWeight:"bold",color:"#38a048"}}>R$ {a.value}</span>
                 </div>
               ))
             }
