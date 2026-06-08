@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 
 // ── SUPABASE ──────────────────────────────────────────────────
-const SUPA_URL = "https://pupxongflgpzocpddblg.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1cHhvbmdmbGdwem9jcGRkYmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2ODg3NDIsImV4cCI6MjA5MjI2NDc0Mn0.ynHLTBzheyOSRAaNOhOCTKdoJ8Qikz0kEFlYH-e-Qbo";
+const SUPA_URL = "https://fkebdutvpcomfzxtuwqg.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrZWJkdXR2cGNvbWZ6eHR1d3FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMTMxNzAsImV4cCI6MjA5NDY4OTE3MH0.Y6-FGG3K2K7j7phE-ez3DLuiaYNm0rTWj7zN8YSr9Ac";
 
 async function sbGet() {
   const r = await fetch(`${SUPA_URL}/rest/v1/wem_data?id=eq.main&select=students,visitors`, {
@@ -195,6 +195,7 @@ export default function WEMApp() {
         const parsed = JSON.parse(local);
         if (parsed.students?.length > 0) setStudents(parsed.students);
         if (parsed.visitors?.length > 0) setVisitors(parsed.visitors);
+        dataLoaded.current = true; // já tem dados locais, pode salvar
       }
     } catch(e) {}
 
@@ -225,7 +226,10 @@ export default function WEMApp() {
       if (d.visitors.length > 0) setVisitors(d.visitors);
       dataLoaded.current = true;
       setDbStatus("ok");
-    }).catch(() => setDbStatus("error"));
+    }).catch(() => {
+      setDbStatus("error");
+      dataLoaded.current = true; // permite salvar no localStorage mesmo sem Supabase
+    });
   }, []);
 
   // Salvar no Supabase com debounce
