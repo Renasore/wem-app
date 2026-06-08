@@ -15,6 +15,7 @@ async function sbGet() {
 async function sbSet(students, visitors) {
   await fetch(`${SUPA_URL}/rest/v1/wem_data?id=eq.main`, {
     method: "PATCH",
+    keepalive: true, // garante envio mesmo durante reload da página
     headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify({ students, visitors, updated_at: new Date().toISOString() })
   });
@@ -223,16 +224,16 @@ export default function WEMApp() {
     sbSet(students, visitors).catch(() => setDbStatus("error"));
   }, [students, visitors]);
 
-  // Garantir salvamento antes de fechar/recarregar a página
+  // Salvar imediatamente antes de recarregar/fechar (com keepalive)
   useEffect(() => {
     const handleUnload = () => {
       if (!dataLoaded.current) return;
-      // sendBeacon para garantir envio mesmo durante unload
-      const body = JSON.stringify({ students, visitors, updated_at: new Date().toISOString() });
-      navigator.sendBeacon(
-        `${SUPA_URL}/rest/v1/wem_data?id=eq.main`,
-        new Blob([body], { type: "application/json" })
-      );
+      fetch(`${SUPA_URL}/rest/v1/wem_data?id=eq.main`, {
+        method: "PATCH",
+        keepalive: true,
+        headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ students, visitors, updated_at: new Date().toISOString() })
+      });
     };
     window.addEventListener("beforeunload", handleUnload);
     return () => window.removeEventListener("beforeunload", handleUnload);
