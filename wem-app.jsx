@@ -188,6 +188,17 @@ export default function WEMApp() {
 
   // Carregar do Supabase
   useEffect(() => {
+    // Carregar localStorage imediatamente (sem esperar Supabase)
+    try {
+      const local = localStorage.getItem("wem_data");
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (parsed.students?.length > 0) setStudents(parsed.students);
+        if (parsed.visitors?.length > 0) setVisitors(parsed.visitors);
+      }
+    } catch(e) {}
+
+    // Sincronizar com Supabase em segundo plano
     sbGet().then(d => {
       if (d.students.length > 0) {
         const fixed = d.students.map(s => {
@@ -212,15 +223,18 @@ export default function WEMApp() {
         setStudents(fixed);
       }
       if (d.visitors.length > 0) setVisitors(d.visitors);
-      dataLoaded.current = true; // marca que carregou antes de permitir salvar
+      dataLoaded.current = true;
       setDbStatus("ok");
     }).catch(() => setDbStatus("error"));
   }, []);
 
   // Salvar no Supabase com debounce
-  // Salvar imediatamente quando dados mudam (após carregamento)
+  // Salvar em localStorage imediatamente + Supabase em paralelo
   useEffect(() => {
     if (!dataLoaded.current) return;
+    // localStorage: instantâneo, nunca falha
+    try { localStorage.setItem("wem_data", JSON.stringify({ students, visitors })); } catch(e) {}
+    // Supabase: assíncrono, backup na nuvem
     sbSet(students, visitors).catch(() => setDbStatus("error"));
   }, [students, visitors]);
 
