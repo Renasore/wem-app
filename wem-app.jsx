@@ -217,15 +217,16 @@ export default function WEMApp() {
   }, []);
 
   // Salvar no Supabase com debounce
+  // Salvar apenas quando students ou visitors mudam APÓS o carregamento inicial
+  // dbStatus foi removido das dependências para evitar salvar no momento do load
   useEffect(() => {
-    if (dbStatus !== "ok") return;
-    if (!dataLoaded.current) return; // não salvar antes de carregar
+    if (!dataLoaded.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       sbSet(students, visitors).catch(() => setDbStatus("error"));
-    }, 1500);
+    }, 2000);
     return () => clearTimeout(saveTimer.current);
-  }, [students, visitors, dbStatus]);
+  }, [students, visitors]);
 
   // Trancamento automático de avulso após 1 mês sem presença
   useEffect(() => {
@@ -1651,7 +1652,7 @@ export default function WEMApp() {
           <button onClick={doExport} style={{flex:1,background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 0",fontSize:12,fontWeight:"bold",color:C.muted,cursor:"pointer"}}>📤 Exportar</button>
           <div style={{display:"flex",alignItems:"center",gap:5,flex:1,justifyContent:"center"}}>
             <div style={{width:8,height:8,borderRadius:4,background:dbStatus==="ok"?"#38a048":dbStatus==="loading"?C.amber:"#e05050",flexShrink:0}}/>
-            <span style={{fontSize:10,color:C.dim}}>{dbStatus==="ok"?"Sincronizado":dbStatus==="loading"?"Carregando...":"Sem conexão"}</span>
+            <span style={{fontSize:10,color:C.dim}}>{dataLoaded.current?"Sincronizado":dbStatus==="error"?"Sem conexão":"Carregando..."}</span>
           </div>
         </div>
       </div>
