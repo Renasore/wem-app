@@ -306,7 +306,7 @@ export default function WEMApp() {
     // Carregar estágios existentes do aluno e pré-selecionar os não-"none"
     const existingStages = sel.taskStages || {};
     const preSelected = Object.entries(existingStages).filter(([,v])=>v!=="none").map(([k])=>+k);
-    setTaskPicker({ type, selected: preSelected, stages: {...existingStages} });
+    setTaskPicker({ type, selected: preSelected, stages: {...existingStages}, date: todISO() });
   }
 
   function confirmAula() {
@@ -314,7 +314,8 @@ export default function WEMApp() {
     const { type, selected, stages } = taskPicker;
     const sorted = [...selected].sort((a,b) => a-b);
     upd(sel.id, s => {
-      const entry = { id:uid(), date:todBR(), type, tasks:sorted.map(i => ({ taskIndex:i, taskName:ALL_TASKS[i]?.name||"—", stage:stages?.[i]||"none" })) };
+      const pickerDate = taskPicker?.date ? fmtD(taskPicker.date) : todBR();
+      const entry = { id:uid(), date:pickerDate, type, tasks:sorted.map(i => ({ taskIndex:i, taskName:ALL_TASKS[i]?.name||"—", stage:stages?.[i]||"none" })) };
       // Salvar taskCompletions (concluídas) e taskStages (todos os estágios)
       const comps  = { ...s.taskCompletions };
       const newStages = { ...(s.taskStages||{}), ...(stages||{}) };
@@ -1447,6 +1448,11 @@ export default function WEMApp() {
                     {taskPicker.type==="presenca"?"✅ Tarefas desta presença":"🔄 Tarefas desta reposição"}
                   </span>
                   <span style={{fontSize:11,color:C.muted}}>{taskPicker.selected.length} selecionada{taskPicker.selected.length!==1?"s":""}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,background:C.card2,borderRadius:8,padding:"8px 12px"}}>
+                  <span style={{fontSize:12,color:C.muted}}>📅 Data da aula:</span>
+                  <input type="date" value={taskPicker.date||todISO()} onChange={e=>setTaskPicker(p=>({...p,date:e.target.value}))}
+                    style={{flex:1,background:"transparent",border:"none",color:C.amberL,fontSize:14,fontWeight:"bold",outline:"none",colorScheme:"dark"}} />
                 </div>
                 {/* Legenda */}
                 <div style={{display:"flex",gap:12,marginBottom:8,fontSize:11}}>
